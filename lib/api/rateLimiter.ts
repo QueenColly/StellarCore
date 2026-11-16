@@ -59,16 +59,11 @@ export function createRateLimiter(
       const clientKey = clientIp(request);
       const count = requestCounts.get(clientKey) ?? 0;
       if (count >= limit) {
-        const resetMs = Math.max(0, (window + 1) * windowMs - now);
-        const retryAfterSeconds = Math.max(1, Math.ceil(resetMs / 1000));
         return Object.freeze({
           allowed: false,
           response: Response.json(RATE_LIMIT_ERROR_BODY, {
             status: 429,
-            headers: Object.freeze({
-              "Cache-Control": "no-store",
-              "Retry-After": String(retryAfterSeconds),
-            }),
+            headers: Object.freeze({ "Cache-Control": "no-store" }),
           }),
         });
       }
