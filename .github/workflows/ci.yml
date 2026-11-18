@@ -1,0 +1,71 @@
+name: CI
+
+# Unconditional validation for every pull request into, and push to,
+# `development`. Uses the unprivileged `pull_request` event: fork PRs receive a
+# read-only token and no repository secrets. This workflow defines no secrets
+# and connects to no database; DATABASE_URL is an inert localhost placeholder
+# required only by prisma.config.ts for client generation.
+on:
+  pull_request:
+    branches: [development]
+  push:
+    branches: [development]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://stellarcore:stellarcore@localhost:5432/stellarcore
+      STELLARCORE_ENVIRONMENT: ci
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 22 with npm caching
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Audit registry configuration
+        run: npm run audit:config
+
+      - name: Audit raw SQL boundaries
+        run: npm run audit:sql
+
+      - name: Audit public API compatibility
+        run: npm run audit:compatibility
+
+      - name: Audit production dependencies for critical advisories
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Build production application
+        run: npm run build
