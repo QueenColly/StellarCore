@@ -14,6 +14,7 @@ import {
   fixtureAsApiResult,
   loadContractFixture,
   type DashboardPanelContract,
+  withTestAppRouter,
 } from "../../support/dashboardContracts";
 
 exposeReactForClassicJsx();
@@ -48,7 +49,9 @@ function routeOf(endpoint: string): string {
 function render(contract: DashboardPanelContract, result: ApiResult): string {
   const view = VIEWS[contract.panel];
   assert.ok(view, `no view registered for ${contract.panel}`);
-  return renderToStaticMarkup(createElement(view, { result: result as never }));
+  return renderToStaticMarkup(
+    withTestAppRouter(createElement(view, { result: result as never })),
+  );
 }
 
 function escapeHtml(value: string): string {

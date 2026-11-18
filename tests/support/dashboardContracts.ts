@@ -1,4 +1,8 @@
 import * as React from "react";
+import {
+  AppRouterContext,
+  type AppRouterInstance,
+} from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { loadAllFixtures } from "@/lib/api/compatibility/manifest";
 import type { CompatibilityFixture } from "@/lib/api/compatibility/types";
 
@@ -12,6 +16,25 @@ import type { CompatibilityFixture } from "@/lib/api/compatibility/types";
  */
 
 export type FieldType = "string" | "number" | "boolean" | "array" | "object";
+
+const TEST_APP_ROUTER: AppRouterInstance = Object.freeze({
+  back: () => undefined,
+  forward: () => undefined,
+  refresh: () => undefined,
+  hmrRefresh: () => undefined,
+  push: () => undefined,
+  replace: () => undefined,
+  prefetch: () => undefined,
+});
+
+/** Provide the client router context required by retry controls in SSR tests. */
+export function withTestAppRouter(node: React.ReactNode): React.ReactElement {
+  return React.createElement(
+    AppRouterContext.Provider,
+    { value: TEST_APP_ROUTER },
+    node,
+  );
+}
 
 export type ConsumedField = Readonly<{
   /** Dot path from the response body; `[]` steps into every array element. */

@@ -116,4 +116,3 @@ function parseOffset(
 
   return Object.freeze({ ok: true, value: Number(raw) });
 }
-

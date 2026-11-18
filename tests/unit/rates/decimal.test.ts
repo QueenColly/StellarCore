@@ -92,4 +92,3 @@ describe("ExactDecimal math operations", () => {
     assert.equal(Object.isFrozen(decimal), true);
   });
 });
-

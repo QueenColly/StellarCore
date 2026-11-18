@@ -5,6 +5,12 @@ import * as anchorsRoute from "@/app/api/anchors/route";
 import * as corridorsRoute from "@/app/api/corridors/route";
 import * as ratesRoute from "@/app/api/rates/route";
 import * as rateHistoryRoute from "@/app/api/rates/history/route";
+import {
+  handleAnchorsRequest,
+  handleCorridorsRequest,
+  handleRateHistoryRequest,
+  handleRatesRequest,
+} from "@/lib/api/requestHandlers";
 import type { AnchorDirectoryRecord, AnchorDirectoryRepository } from "@/lib/api/anchorRepository";
 import type { CorridorDirectoryRecord, CorridorDirectoryRepository } from "@/lib/api/corridorRepository";
 import type { LatestCorridorRate } from "@/types/latestRates";
@@ -74,14 +80,14 @@ const mockCorridorRepo: CorridorDirectoryRepository = Object.freeze({
 });
 
 test("GET /api/rates rejects repeated identical corridor parameters safely", async () => {
-  const response = await ratesRoute.GET(
+  const response = await handleRatesRequest(
     new Request(`http://localhost/api/rates?corridor=${CORRIDOR}&corridor=${CORRIDOR}`),
   );
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
     error: {
-      code: "invalid_corridor",
-      message: "The corridor slug is invalid.",
+      code: "invalid_query",
+      message: "The query parameters are invalid.",
     },
   });
 });
@@ -93,8 +99,8 @@ test("GET /api/rates rejects repeated conflicting valid corridor parameters safe
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
     error: {
-      code: "invalid_corridor",
-      message: "The corridor slug is invalid.",
+      code: "invalid_query",
+      message: "The query parameters are invalid.",
     },
   });
 });
@@ -106,8 +112,8 @@ test("GET /api/rates prevents validation bypass when valid and invalid corridor 
   assert.equal(validThenInvalid.status, 400);
   assert.deepEqual(await validThenInvalid.json(), {
     error: {
-      code: "invalid_corridor",
-      message: "The corridor slug is invalid.",
+      code: "invalid_query",
+      message: "The query parameters are invalid.",
     },
   });
 
@@ -117,14 +123,14 @@ test("GET /api/rates prevents validation bypass when valid and invalid corridor 
   assert.equal(invalidThenValid.status, 400);
   assert.deepEqual(await invalidThenValid.json(), {
     error: {
-      code: "invalid_corridor",
-      message: "The corridor slug is invalid.",
+      code: "invalid_query",
+      message: "The query parameters are invalid.",
     },
   });
 });
 
 test("GET /api/rates baseline remains consistent for single valid corridor parameter", async () => {
-  const response = await ratesRoute.GET(
+  const response = await handleRatesRequest(
     new Request(`http://localhost/api/rates?corridor=${CORRIDOR}`),
     {
       now: () => NOW,
@@ -138,7 +144,7 @@ test("GET /api/rates baseline remains consistent for single valid corridor param
 });
 
 test("GET /api/rates/history rejects repeated identical corridor parameters safely", async () => {
-  const response = await rateHistoryRoute.GET(
+  const response = await handleRateHistoryRequest(
     new Request(`http://localhost/api/rates/history?corridor=${CORRIDOR}&corridor=${CORRIDOR}&days=30`),
   );
   assert.equal(response.status, 400);
@@ -238,7 +244,7 @@ test("GET /api/rates/history prevents days validation bypass when valid and inva
 });
 
 test("GET /api/rates/history baseline remains consistent for single valid parameters", async () => {
-  const response = await rateHistoryRoute.GET(
+  const response = await handleRateHistoryRequest(
     new Request(`http://localhost/api/rates/history?corridor=${CORRIDOR}&days=30`),
     {
       now: () => NOW,
@@ -307,7 +313,7 @@ test("GET /api/anchors prevents pagination validation bypass in either parameter
 });
 
 test("GET /api/anchors baseline remains consistent for single valid pagination parameters", async () => {
-  const response = await anchorsRoute.GET(
+  const response = await handleAnchorsRequest(
     new Request("http://localhost/api/anchors?limit=10&offset=0"),
     { repository: mockAnchorRepo },
   );
@@ -373,7 +379,7 @@ test("GET /api/corridors prevents pagination validation bypass in either paramet
 });
 
 test("GET /api/corridors baseline remains consistent for single valid pagination parameters", async () => {
-  const response = await corridorsRoute.GET(
+  const response = await handleCorridorsRequest(
     new Request("http://localhost/api/corridors?limit=10&offset=0"),
     { repository: mockCorridorRepo },
   );

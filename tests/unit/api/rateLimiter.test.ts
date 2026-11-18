@@ -104,22 +104,41 @@ test("first entry of x-forwarded-for is used; fallbacks are real-ip then anonymo
 });
 
 test("every current public GET route enforces the shared limiter", () => {
-  const routeFiles = [
-    "../../../app/api/anchors/route.ts",
+  const directRouteFiles = [
     "../../../app/api/anchors/[slug]/route.ts",
-    "../../../app/api/corridors/route.ts",
     "../../../app/api/corridors/[slug]/route.ts",
-    "../../../app/api/rates/route.ts",
-    "../../../app/api/rates/history/route.ts",
     "../../../app/api/reputation/route.ts",
     "../../../app/api/reputation/[slug]/route.ts",
   ];
 
-  for (const relative of routeFiles) {
+  for (const relative of directRouteFiles) {
     const source = readFileSync(new URL(relative, import.meta.url), "utf8");
     assert.match(source, /@\/lib\/api\/rateLimiter/);
     assert.match(source, /getRateLimiter\(\)\.check\(request, Date\.now\(\)\)/);
   }
+
+  const delegatedRoutes = [
+    ["../../../app/api/anchors/route.ts", "handleAnchorsRequest"],
+    ["../../../app/api/corridors/route.ts", "handleCorridorsRequest"],
+    ["../../../app/api/rates/route.ts", "handleRatesRequest"],
+    ["../../../app/api/rates/history/route.ts", "handleRateHistoryRequest"],
+  ] as const;
+
+  for (const [relative, handler] of delegatedRoutes) {
+    const source = readFileSync(new URL(relative, import.meta.url), "utf8");
+    assert.match(source, /@\/lib\/api\/requestHandlers/);
+    assert.match(source, new RegExp(`return ${handler}\\(request\\)`));
+  }
+
+  const handlerSource = readFileSync(
+    new URL("../../../lib/api/requestHandlers.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(handlerSource, /@\/lib\/api\/rateLimiter/);
+  assert.equal(
+    [...handlerSource.matchAll(/getRateLimiter\(\)\.check\(request, Date\.now\(\)\)/g)].length,
+    delegatedRoutes.length,
+  );
 
   const internalCron = readFileSync(
     new URL("../../../app/api/internal/cron/refresh/route.ts", import.meta.url),

@@ -80,7 +80,7 @@ function mixedFailureSummary(): SafeLiveRateRunSummary {
         phase: "NORMALIZATION",
         code: "NORMALIZATION_FAILURE",
       },
-    ],
+    ] satisfies SafeLiveRateRunSummary["failures"],
     skippedSources: [],
   });
 }

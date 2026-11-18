@@ -4,8 +4,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
 import { AnchorsSection } from "@/components/dashboard/AnchorsSection";
 import { CorridorsSection } from "@/components/dashboard/CorridorsSection";
-import { SectionError } from "@/components/dashboard/SectionStates";
 import type { AnchorDirectoryRecord } from "@/lib/api/anchorRepository";
+import {
+  exposeReactForClassicJsx,
+  withTestAppRouter,
+} from "../../support/dashboardContracts";
+
+exposeReactForClassicJsx();
 
 const dashboardSource = readFileSync(
   new URL("../../../app/dashboard/page.tsx", import.meta.url),
@@ -55,8 +60,9 @@ test("mixed results keep a successful panel visible beside a scoped failure", as
   ]);
 
   assert.match(renderToStaticMarkup(anchors), /Anchor One/);
-  assert.equal(corridors.type, SectionError);
-  assert.equal((corridors.props as { message: string }).message, "Unable to load corridors.");
+  const corridorsMarkup = renderToStaticMarkup(withTestAppRouter(corridors));
+  assert.match(corridorsMarkup, /role="alert"/);
+  assert.match(corridorsMarkup, /Unable to load corridors\./);
   assert.match(retrySource, /onClick=\{\(\) => router\.refresh\(\)\}/);
   assert.match(retrySource, /Refresh dashboard data/);
 });

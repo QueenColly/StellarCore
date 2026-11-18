@@ -28,6 +28,8 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://stellarcore:stellarcore@localhost:5432/stellarcore
         run: npx prisma validate
 
       - name: Generate Prisma client

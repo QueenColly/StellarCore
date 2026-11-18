@@ -41,12 +41,12 @@ describe("Dashboard rate summaries and formatting", () => {
     test("RatePanel applies break-all to observation rate and fee table cells", () => {
       assert.match(
         ratePanelSource,
-        /<td className="[^"]*text-\[var\(--white\)\] break-all">\{observation\.rate\}<\/td>/,
+        /<td className="[^"]*text-\[var\(--white\)\] break-all">\s*\{observation\.rate\}\s*<\/td>/,
         "Rate observation cell must apply break-all for extreme magnitude rate strings",
       );
       assert.match(
         ratePanelSource,
-        /<td className="[^"]*text-\[var\(--muted\)\] break-all">\{observation\.fee\}<\/td>/,
+        /<td className="[^"]*text-\[var\(--muted\)\] break-all">\s*\{observation\.fee\}\s*<\/td>/,
         "Fee observation cell must apply break-all for extreme fee precision strings",
       );
     });

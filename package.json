@@ -39,17 +39,17 @@
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
-    "@prisma/adapter-pg": "^7.9.1",
-    "@prisma/client": "^7.9.1",
-    "@stellar/stellar-sdk": "^17.0.0",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "@stellar/stellar-sdk": "^17.4.0",
     "dotenv": "^17.4.2",
     "gsap": "^3.13.0",
     "ipaddr.js": "^2.2.0",
-    "next": "^15.5.0",
+    "next": "^15.5.29",
     "pg": "^8.23.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "smol-toml": "^1.8.0"
+    "smol-toml": "^1.9.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -61,7 +61,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.5.0",
     "fast-check": "^3.23.2",
-    "prisma": "^7.9.1",
+    "prisma": "^7.10.1",
     "tailwindcss": "^4.1.0",
     "tsx": "^4.23.12",
     "typescript": "^5.8.0"

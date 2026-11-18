@@ -227,11 +227,11 @@ export function RatePanelView({
                       : observation.anchor.slug}
                   </td>
 
-                  <td className="break-all px-3 py-2 text-[var(--white)]">
+                  <td className="px-3 py-2 text-[var(--white)] break-all">
                     {observation.rate}
                   </td>
 
-                  <td className="break-all px-3 py-2 text-[var(--muted)]">
+                  <td className="px-3 py-2 text-[var(--muted)] break-all">
                     {observation.fee}
                   </td>
 

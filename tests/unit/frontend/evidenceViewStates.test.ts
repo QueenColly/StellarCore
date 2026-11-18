@@ -12,6 +12,7 @@ import {
   DASHBOARD_PANEL_CONTRACTS,
   exposeReactForClassicJsx,
   fixtureAsApiResult,
+  withTestAppRouter,
 } from "../../support/dashboardContracts";
 
 exposeReactForClassicJsx();
@@ -34,7 +35,13 @@ const dashboardPageSource = readFileSync(new URL("../../../app/dashboard/page.ts
 const dashboardLoadingSource = readFileSync(new URL("../../../app/dashboard/loading.tsx", import.meta.url), "utf8");
 
 function renderView(view: FunctionComponent<{ result: never }>, fixtureName: string): string {
-  return renderToStaticMarkup(createElement(view, { result: fixtureAsApiResult<ApiResult>(fixtureName) as never }));
+  return renderToStaticMarkup(
+    withTestAppRouter(
+      createElement(view, {
+        result: fixtureAsApiResult<ApiResult>(fixtureName) as never,
+      }),
+    ),
+  );
 }
 
 function stateMarkers(html: string): string[] {
@@ -105,7 +112,11 @@ for (const { panel, view, loadingLabel } of EVIDENCE_VIEWS) {
 test("the three states are semantically and visually distinct", () => {
   const loading = renderToStaticMarkup(createElement(SectionSkeleton, { label: "anchors" }));
   const empty = renderToStaticMarkup(createElement(SectionEmpty, { message: "Nothing here." }));
-  const unavailable = renderToStaticMarkup(createElement(SectionError, { message: "Unable to load." }));
+  const unavailable = renderToStaticMarkup(
+    withTestAppRouter(
+      createElement(SectionError, { message: "Unable to load." }),
+    ),
+  );
 
   const roles = [loading, empty, unavailable].map((html) => html.match(/^<div role="(\w+)"/)?.[1]);
   assert.deepEqual(roles, ["status", "status", "alert"]);
