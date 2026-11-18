@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
-import { EvidenceTimestamp, formatEvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
+import {
+  EvidenceTimestamp,
+  formatEvidenceTimestamp,
+} from "@/components/ui/EvidenceTimestamp";
 
 test("persisted evidence timestamps render consistently with an explicit UTC timezone", () => {
   assert.equal(
@@ -10,7 +13,11 @@ test("persisted evidence timestamps render consistently with an explicit UTC tim
     "2025-04-03 10:15:30Z UTC",
   );
   assert.equal(
-    renderToStaticMarkup(createElement(EvidenceTimestamp, { value: "2025-04-03T12:15:30+02:00" })),
+    renderToStaticMarkup(
+      createElement(EvidenceTimestamp, {
+        value: "2025-04-03T12:15:30+02:00",
+      }),
+    ),
     '<time dateTime="2025-04-03T10:15:30.000Z">2025-04-03 10:15:30Z UTC</time>',
   );
 });

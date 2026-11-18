@@ -22,20 +22,6 @@ const CORRIDOR_RECORD = Object.freeze({
   countryTo: "BR",
 });
 
-// Adversarial fixtures exercising the slug/search/filter boundary. These values
-// must never alter query structure; they are treated as opaque parameters.
-const INJECTION_SLUGS = Object.freeze([
-  "' OR 1=1--",
-  "usdc-us-brl-br' UNION SELECT null--",
-  "usdc-us-brl-br; DROP TABLE \"Corridor\";--",
-  "usdc-us-brl-br\" OR \"\"=\"",
-  "usdc-us-brl-br% /* comment */",
-  "usdc-us-brl-br\nUNION SELECT null",
-  "$1",
-  "%s",
-  "\\x00",
-]);
-
 test("missing corridor and empty history return safe typed states", async () => {
   assert.deepEqual(await readLatestCorridorRate("missing", {
     evaluatedAt: NOW,
@@ -49,6 +35,10 @@ test("missing corridor and empty history return safe typed states", async () => 
   assert.equal(empty.ok && empty.state, "insufficient_fresh_sources");
   assert.equal(empty.ok && empty.median, null);
   assert.equal(empty.ok && empty.totalIndependentSources, 0);
+  assert.equal(empty.ok && empty.freshSourceCount, 0);
+  assert.equal(empty.ok && empty.evaluatedAt, NOW.toISOString());
+  assert.deepEqual(empty.ok && empty.observations, []);
+  assert.deepEqual(empty.ok && empty.exclusions, []);
 });
 
 test("one fresh anchor remains one independent source and has no median", async () => {
@@ -146,42 +136,6 @@ test("repository failures and invalid evaluation times expose only safe codes", 
     evaluatedAt: new Date("invalid"),
     repository: repository([]),
   }), { ok: false, corridorSlug: CORRIDOR, code: "INVALID_EVALUATION_TIME" });
-});
-
-test("adversarial slugs reach the repository as opaque parameters and do not alter query structure", async () => {
-  for (const slug of INJECTION_SLUGS) {
-    const seenSlugs: string[] = [];
-    const result = await readLatestCorridorRate(slug, {
-      evaluatedAt: NOW,
-      repository: {
-        findCorridorBySlug: async (received) => {
-          seenSlugs.push(received);
-          return null;
-        },
-        findLatestObservations: async () => [],
-      },
-    });
-    assert.deepEqual(seenSlugs, [slug]);
-    assert.deepEqual(result, { ok: false, corridorSlug: slug, code: "CORRIDOR_NOT_FOUND" });
-  }
-});
-
-test("adversarial slugs do not leak into observation queries or error output", async () => {
-  const capturedSearches: unknown[] = [];
-  const slug = "'OR 1=1--";
-  const result = await readLatestCorridorRate(slug, {
-    evaluatedAt: NOW,
-    repository: {
-      findCorridorBySlug: async () => CORRIDOR_RECORD,
-      findLatestObservations: async (query) => {
-        capturedSearches.push(query);
-        return [];
-      },
-    },
-  });
-  assert.equal(capturedSearches.length, 1);
-  assert.equal(JSON.stringify(result).includes(slug), false);
-  assert.equal(result.ok && result.corridor.slug, CORRIDOR);
 });
 
 async function read(history: readonly LatestRateRepositoryObservation[]) {

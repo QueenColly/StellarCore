@@ -62,11 +62,9 @@ export default async function AnchorPage({ params }: Props) {
           <header className="mt-8 max-w-3xl">
             <p className="eyebrow">Anchor detail</p>
             <h1 className="mt-2 text-3xl leading-tight sm:text-4xl" style={{ fontFamily: "var(--display)" }}>
-              {anchor.name?.trim() ? anchor.name : anchor.slug}
+              {anchor.name}
             </h1>
-            <p className="mt-3 font-mono text-sm text-[var(--muted)]">
-              {anchor.homeDomain?.trim() ? anchor.homeDomain : "—"}
-            </p>
+            <p className="mt-3 font-mono text-sm text-[var(--muted)]">{anchor.homeDomain}</p>
             <div className="mt-4">
               <Badge tone={sync.tone} label={sync.label} />
             </div>

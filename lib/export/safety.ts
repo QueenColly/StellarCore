@@ -18,7 +18,7 @@ const SECRET_KEYS = new Set([
 ]);
 
 const CREDENTIAL_URL =
-  /^(?:postgres(?:ql)?|mysql|redis|mongodb):\/\/[^\s/@:]+:[^\s/@]+@/i;
+  /^(?:postgres(?:ql)?|mysql|redis|mongodb):\/\/[^\s/@:]*:\S+@/i;
 const BEARER = /^bearer\s+[a-z0-9._~+\/-]+=*$/i;
 const JWT = /^eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+$/i;
 

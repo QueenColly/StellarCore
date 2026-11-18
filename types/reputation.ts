@@ -81,7 +81,6 @@ export type PersistedReputationScore = Readonly<{
   id: string;
   anchorSlug: string;
   computedAt: Date;
-  writeStatus: "written" | "rejected_stale" | "rejected_tie";
 }>;
 
 export type ReputationPersistenceInput = Readonly<{

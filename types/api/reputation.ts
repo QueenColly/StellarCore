@@ -47,8 +47,6 @@ export type ReputationApiErrorResponse = Readonly<{
   error: Readonly<{
     code: "invalid_anchor_slug" | "anchor_not_found" | "internal_error";
     message: string;
-    /** Optional, additive request-correlation id (see `lib/api/requestId.ts`). */
-    requestId?: string;
   }>;
 }>;
 

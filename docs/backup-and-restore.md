@@ -132,21 +132,3 @@ Known limitation, stated honestly: the test exercises the procedure and the
 tooling, not the production provider's network path or credentials. The first
 scheduled production backup should be followed by one restore drill of that
 real dump into a scratch database using exactly the steps above.
-
-## Restore drill target guardrails (#170, #351)
-
-Restore drills run solely against isolated environments. To prevent target-identity
-mistakes that could jeopardize production data:
-
-1. **Production targets are refused before commands execute**: If the target identity,
-   database URL, hostname, or durable database stamp indicates `production` or `prod`,
-   the restore-drill path halts immediately before executing any restore commands.
-2. **Approved isolated test targets only**: The drill strictly permits only explicitly approved
-   isolated identities (`test`, `ci`, `isolated-drill`, `restore-drill`) on loopback hosts
-   (`127.0.0.1`, `localhost`, `::1`).
-3. **Missing target identity rejected**: Fails closed if the target identity is omitted or empty.
-4. **Credential and URL safety**: Failure output, reports, and exceptions redact all secrets,
-   passwords, tokens, and full connection strings.
-5. **No production secrets required**: Restore drill tests and self-tests execute in clean,
-   synthetic environments without requiring production secrets.
-

@@ -28,7 +28,7 @@ function mockClient(acquires: boolean, log?: QueryLog): PoolClient {
 function deps(client: PoolClient, released: { called: boolean }) {
   return Object.freeze({
     checkoutClient: async () => client,
-    releaseClient: () => { released.called = true; },
+    releaseClient: (_: PoolClient) => { released.called = true; },
   });
 }
 
@@ -116,7 +116,7 @@ test("withAdvisoryLock releases the client even when unlock query throws", async
     async () => "ok",
     {
       checkoutClient: async () => badUnlockClient,
-      releaseClient: () => { released.called = true; },
+      releaseClient: (_: PoolClient) => { released.called = true; },
     },
   );
 

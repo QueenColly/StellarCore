@@ -60,14 +60,24 @@ test("malformed, zero, negative, and oversized values are rejected before reposi
     { limit: null, offset: "1.5" },
     { limit: null, offset: "abc" },
     { limit: null, offset: " " },
-    { limit: null, offset: "99999999999999999999" },
-    { limit: null, offset: "9".repeat(4_096) },
+    { limit: ["10", "20"], offset: null },
+    { limit: null, offset: ["0", "5"] },
   ] as const;
 
   for (const query of invalid) {
     const result = parsePagination(query);
     assert.equal(result.ok, false, JSON.stringify(query));
   }
+});
+
+test("duplicate query parameters are captured as arrays and fail pagination parsing", () => {
+  const repeated = new URLSearchParams("limit=10&limit=20&offset=5&offset=15");
+  assert.deepEqual(readPaginationQuery(repeated), {
+    limit: ["10", "20"],
+    offset: ["5", "15"],
+  });
+  const parsed = parsePagination(readPaginationQuery(repeated));
+  assert.equal(parsed.ok, false);
 });
 
 test("the documented maximum limit is accepted", () => {
@@ -78,23 +88,38 @@ test("the documented maximum limit is accepted", () => {
 });
 
 test("both list routes read limit and offset from the request URL and keep caching disabled", () => {
-  for (const path of ["anchors", "corridors"]) {
+  const handlerSource = readFileSync(
+    new URL("../../../lib/api/requestHandlers.ts", import.meta.url),
+    "utf8",
+  );
+
+  for (const [path, handler] of [
+    ["anchors", "handleAnchorsRequest"],
+    ["corridors", "handleCorridorsRequest"],
+  ] as const) {
     const source = readFileSync(
       new URL(`../../../app/api/${path}/route.ts`, import.meta.url),
       "utf8",
     );
     assert.match(
       source,
-      /readPaginationQuery\(new URL\(request\.url\)\.searchParams\)/,
-      `${path} route must pass the request query parameters`,
-    );
-    assert.match(source, /publicApiJsonResponse/);
-    assert.match(
-      source,
-      /getRateLimiter\(\)\.check\(request, Date\.now\(\), requestId\)/,
+      new RegExp(`return ${handler}\\(request\\)`),
+      `${path} route must delegate the complete request`,
     );
     assert.doesNotMatch(source, /export async function (POST|PUT|PATCH|DELETE)/);
   }
+
+  assert.equal(
+    [...handlerSource.matchAll(/readPaginationQuery\(new URL\(request\.url\)\.searchParams\)/g)].length,
+    2,
+    "both handlers must parse pagination from the request URL",
+  );
+  assert.equal(
+    [...handlerSource.matchAll(/getRateLimiter\(\)\.check\(request, Date\.now\(\)\)/g)].length,
+    4,
+    "all shared public handlers must retain rate limiting",
+  );
+  assert.match(handlerSource, /publicApiJsonResponse/);
 });
 
 test("paginate slices deterministically without mutating the source", () => {

@@ -32,24 +32,6 @@ npx tsx --test --test-name-pattern="timeout" tests/unit/stellar/sep38.test.ts
 `npm run lint` checks the repository, and `npx tsc --noEmit` performs the
 TypeScript check without emitting files.
 
-## Browser smoke tests for persisted-evidence views (#361)
-
-`tests/e2e/` holds Playwright tests for the four public persisted-evidence
-views: anchors, corridors, rated evidence, and reputation. They run against a
-read-only fixture server (`tests/e2e/support/evidenceFixtureServer.ts`) that
-renders the same pure section views the dashboard uses, with deterministic API
-fixtures for ready, empty, and controlled error states. No database, anchor
-network, or production credential is required.
-
-```bash
-npx playwright install --with-deps chromium   # once per machine
-npm run test:e2e
-```
-
-The fixture server is started and stopped by `playwright.config.ts`. Browser
-tests are excluded from `npm test`; run them explicitly with `npm run test:e2e`.
-`.github/workflows/e2e.yml` runs them on pull requests that touch the views.
-
 ## Property/fuzz tests for untrusted SEP parsing (#141)
 
 `tests/property/` holds deterministic property suites for the SEP-1 TOML and

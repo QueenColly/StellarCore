@@ -74,7 +74,6 @@ test("persistence upserts current score rather than appending history", async ()
         id: rowId,
         anchorSlug: calculation.anchorSlug,
         computedAt: new Date(calculation.computedAt),
-        writeStatus: "written",
       });
     },
   });
@@ -189,7 +188,6 @@ function persisted() {
     id: "score-id",
     anchorSlug: "anchor",
     computedAt: NOW,
-    writeStatus: "written" as const,
   });
 }
 

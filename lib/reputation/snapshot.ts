@@ -90,7 +90,7 @@ export async function readInReputationSnapshot<T>(
   for (let attempt = 1; attempt <= REPUTATION_SNAPSHOT_MAX_ATTEMPTS; attempt += 1) {
     try {
       const result = await db.$transaction(async (tx) => {
-        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
         const identity = await readSnapshotIdentity(tx);
         return Object.freeze({ value: await read(tx, identity), identity });
       }, {

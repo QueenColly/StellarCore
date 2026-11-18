@@ -1,10 +1,17 @@
+
 "use client";
 
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
-import { readPublicErrorBody, type PublicErrorBodyFields } from "@/lib/api/publicErrorBody";
-import { resolveApiUrl } from "@/lib/api/resolveApiUrl";
-import { createPanelRequestState } from "@/lib/ui/panelRequestState";
-import { SectionError } from "@/components/dashboard/SectionStates";
+import { useEffect, useId, useReducer, useRef, useState } from "react";
+import { formatRateTick } from "@/lib/rates/formatting";
+import {
+  createRateHistoryLoader,
+  type RateHistoryLoader,
+} from "@/lib/rates/rateHistoryRequests";
+import {
+  describeDataAge,
+  initialRateHistoryPanelState,
+  rateHistoryPanelReducer,
+} from "@/lib/rates/rateHistoryPanelState";
 import type {
   PublicRateHistoryPoint,
   PublicRateHistoryResponse,
@@ -33,46 +40,65 @@ export function CorridorRateHistoryChart({
   initialHistory,
 }: Props) {
   const chartId = useId();
-  const [requests] = useState(() => createPanelRequestState(
+  const [panel, dispatch] = useReducer(
+    rateHistoryPanelReducer,
     initialHistory,
-    "Unable to load rate history.",
-  ));
-  const { data: history, loading, error } = useSyncExternalStore(
-    requests.subscribe,
-    requests.getSnapshot,
-    requests.getSnapshot,
+    initialRateHistoryPanelState,
   );
-  useEffect(() => () => requests.cancel(), [requests]);
-  const [selectedDays, setSelectedDays] = useState<number>(initialHistory.windowDays);
-  const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
-  // Only the safe public fields of a failed refresh are retained; raw exception
-  // text and server diagnostics are never rendered.
-  const [failure, setFailure] = useState<PublicErrorBodyFields | null>(null);
 
-  async function handleTimeframeChange(days: number) {
+  // `history` is always the latest successful response; a failed refresh retains it.
+  const { displayed: history, selectedDays, loading, failure } = panel;
+  const displayedDays = history.windowDays;
+  const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+  const loaderRef = useRef<RateHistoryLoader | null>(null);
+
+  useEffect(() => {
+    const loader = createRateHistoryLoader({
+      corridorSlug,
+      callbacks: {
+        onSuccess: (data) => {
+          dispatch({ type: "refresh_succeeded", history: data });
+        },
+        onError: (message, days) => {
+          dispatch({
+            type: "refresh_failed",
+            message,
+            days,
+            failedAt: new Date().toISOString(),
+          });
+        },
+      },
+    });
+
+    loaderRef.current = loader;
+
+    return () => {
+      loader.dispose();
+
+      if (loaderRef.current === loader) {
+        loaderRef.current = null;
+      }
+    };
+  }, [corridorSlug]);
+
+  function handleTimeframeChange(days: number) {
     if (days === selectedDays) return;
-    setSelectedDays(days);
+
+    dispatch({ type: "refresh_started", days });
     setHoveredPointIndex(null);
 
-    await requests.refresh(async () => {
-      const response = await fetch(
-        resolveApiUrl(`/api/rates/history?corridor=${encodeURIComponent(corridorSlug)}&days=${days}`),
-      );
-      if (!response.ok) {
-        const errorData: unknown = await response.json().catch(() => null);
-        setFailure(readPublicErrorBody(errorData));
-        throw new Error("Unable to load rate history.");
-      }
-      setFailure(null);
-      const data: PublicRateHistoryResponse = await response.json();
-      return data;
-    });
+    // The loader aborts in-flight requests so only the latest selection can update the chart.
+    void loaderRef.current?.load(days);
   }
 
   const validPoints = history.points
     .map((point, index) => {
-      const rateNum = point.medianRate !== null ? Number.parseFloat(point.medianRate) : null;
+      const rateNum =
+        point.medianRate !== null
+          ? Number.parseFloat(point.medianRate)
+          : null;
       const timeNum = new Date(point.timestamp).getTime();
+
       return {
         point,
         originalIndex: index,
@@ -88,21 +114,37 @@ export function CorridorRateHistoryChart({
         originalIndex: number;
         rate: number;
         time: number;
-      } => item.rate !== null && Number.isFinite(item.rate) && Number.isFinite(item.time),
+      } =>
+        item.rate !== null &&
+        Number.isFinite(item.rate) &&
+        Number.isFinite(item.time),
     );
 
   const evaluatedAtTime = new Date(history.evaluatedAt).getTime();
-  const minWindowTime = evaluatedAtTime - selectedDays * 24 * 60 * 60 * 1000;
-  const minTime = validPoints.length > 0
-    ? Math.min(minWindowTime, validPoints[0]!.time)
-    : minWindowTime;
-  const maxTime = Math.max(evaluatedAtTime, validPoints.length > 0 ? validPoints[validPoints.length - 1]!.time : minWindowTime + 1);
+  const minWindowTime =
+    evaluatedAtTime - displayedDays * 24 * 60 * 60 * 1000;
+
+  const minTime =
+    validPoints.length > 0
+      ? Math.min(minWindowTime, validPoints[0]!.time)
+      : minWindowTime;
+
+  const maxTime = Math.max(
+    evaluatedAtTime,
+    validPoints.length > 0
+      ? validPoints[validPoints.length - 1]!.time
+      : minWindowTime + 1,
+  );
+
   const timeSpan = Math.max(maxTime - minTime, 1);
 
-  const rates = validPoints.map((p) => p.rate);
+  const rates = validPoints.map((point) => point.rate);
   const minRate = rates.length > 0 ? Math.min(...rates) : 0;
   const maxRate = rates.length > 0 ? Math.max(...rates) : 1;
-  const ratePadding = (maxRate - minRate) * 0.1 || (minRate > 0 ? minRate * 0.05 : 0.01);
+  const ratePadding =
+    (maxRate - minRate) * 0.1 ||
+    (minRate > 0 ? minRate * 0.05 : 0.01);
+
   const yMin = Math.max(0, minRate - ratePadding);
   const yMax = maxRate + ratePadding;
   const rateSpan = Math.max(yMax - yMin, 0.000001);
@@ -112,18 +154,31 @@ export function CorridorRateHistoryChart({
   }
 
   function getY(rate: number): number {
-    return PADDING.top + (1 - (rate - yMin) / rateSpan) * CHART_HEIGHT;
+    return (
+      PADDING.top +
+      (1 - (rate - yMin) / rateSpan) * CHART_HEIGHT
+    );
   }
 
-  // Segment creation respecting gaps
-  const segments: Array<Array<{ x: number; y: number; originalIndex: number }>> = [];
-  let currentSegment: Array<{ x: number; y: number; originalIndex: number }> = [];
+  // Segment creation respects gaps between observations.
+  const segments: Array<
+    Array<{ x: number; y: number; originalIndex: number }>
+  > = [];
+
+  let currentSegment: Array<{
+    x: number;
+    y: number;
+    originalIndex: number;
+  }> = [];
 
   for (let i = 0; i < validPoints.length; i++) {
-    const pt = validPoints[i]!;
-    const prev = validPoints[i - 1];
+    const point = validPoints[i]!;
+    const previous = validPoints[i - 1];
 
-    if (prev && pt.time - prev.time > GAP_THRESHOLD_MS) {
+    if (
+      previous &&
+      point.time - previous.time > GAP_THRESHOLD_MS
+    ) {
       if (currentSegment.length > 0) {
         segments.push(currentSegment);
         currentSegment = [];
@@ -131,9 +186,9 @@ export function CorridorRateHistoryChart({
     }
 
     currentSegment.push({
-      x: getX(pt.time),
-      y: getY(pt.rate),
-      originalIndex: pt.originalIndex,
+      x: getX(point.time),
+      y: getY(point.rate),
+      originalIndex: point.originalIndex,
     });
   }
 
@@ -147,21 +202,44 @@ export function CorridorRateHistoryChart({
       : null;
 
   const yTicks = [
-    { value: yMax, label: yMax.toFixed(4) },
-    { value: (yMin + yMax) / 2, label: ((yMin + yMax) / 2).toFixed(4) },
-    { value: yMin, label: yMin.toFixed(4) },
+    { value: yMax, label: formatRateTick(yMax) },
+    {
+      value: (yMin + yMax) / 2,
+      label: formatRateTick((yMin + yMax) / 2),
+    },
+    { value: yMin, label: formatRateTick(yMin) },
   ];
 
   const xTicks = [
-    { time: minTime, label: new Date(minTime).toLocaleDateString(undefined, { month: "short", day: "numeric" }) },
-    { time: minTime + timeSpan / 2, label: new Date(minTime + timeSpan / 2).toLocaleDateString(undefined, { month: "short", day: "numeric" }) },
-    { time: maxTime, label: new Date(maxTime).toLocaleDateString(undefined, { month: "short", day: "numeric" }) },
+    {
+      time: minTime,
+      label: new Date(minTime).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
+    },
+    {
+      time: minTime + timeSpan / 2,
+      label: new Date(minTime + timeSpan / 2).toLocaleDateString(
+        undefined,
+        {
+          month: "short",
+          day: "numeric",
+        },
+      ),
+    },
+    {
+      time: maxTime,
+      label: new Date(maxTime).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
+    },
   ];
 
   return (
     <section
       aria-labelledby="rate-history-heading"
-      aria-busy={loading}
       className="mt-10"
       data-testid="corridor-rate-history-section"
     >
@@ -176,6 +254,7 @@ export function CorridorRateHistoryChart({
             Historical rate chart
           </h2>
         </div>
+
         <div className="flex items-center gap-2">
           <span className="sr-only">Select history window:</span>
           <div
@@ -202,8 +281,11 @@ export function CorridorRateHistoryChart({
         </div>
       </div>
 
-      <div className="mt-5 rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[var(--ghost)] text-xs text-[var(--muted)]">
+      <div
+        aria-busy={loading}
+        className="mt-5 rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-5"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--ghost)] pb-4 text-xs text-[var(--muted)]">
           <div className="flex items-center gap-4">
             <span>
               <strong className="font-medium text-[var(--white)]">
@@ -211,45 +293,78 @@ export function CorridorRateHistoryChart({
               </strong>{" "}
               {history.points.length === 1 ? "snapshot" : "snapshots"}
             </span>
+
             <span>
               <strong className="font-medium text-[var(--white)]">
                 {validPoints.length}
               </strong>{" "}
               median {validPoints.length === 1 ? "point" : "points"}
             </span>
+
             <span className="rounded bg-[var(--ghost)] px-2 py-0.5 text-[11px] text-[var(--muted)]">
               Gaps preserved honestly
             </span>
           </div>
-          {loading ? (
-            <span className="text-[var(--muted)]">Loading rates...</span>
-          ) : null}
+
+          <div className="flex items-center gap-3">
+            <span data-testid="rate-history-displayed-window">
+              Showing {displayedDays}-day window · evaluated{" "}
+              <time dateTime={history.evaluatedAt}>
+                {new Date(history.evaluatedAt).toLocaleString()}
+              </time>
+            </span>
+
+            {loading ? (
+              <span className="text-[var(--muted)]">
+                Loading {selectedDays}-day window...
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        {failure || error ? (
-          <div className="my-6">
-            <SectionError
-              area="rate-history"
-              code={failure?.code}
-              message={failure?.message ?? "Unable to load rate history."}
-              requestId={failure?.requestId}
-            />
+        {failure ? (
+          <div
+            role="alert"
+            data-testid="rate-history-refresh-failure"
+            className="mt-4 rounded border border-[rgba(238,143,129,0.35)] p-4 text-sm text-[#ee8f81]"
+          >
+            <p>
+              Could not refresh the {failure.requestedDays}-day history:{" "}
+              {failure.message}
+            </p>
+
+            <p className="mt-1 text-xs">
+              Still showing the last successful {displayedDays}-day
+              history, evaluated{" "}
+              {new Date(history.evaluatedAt).toLocaleString()} (
+              {describeDataAge(
+                history.evaluatedAt,
+                new Date(failure.failedAt),
+              )}{" "}
+              when the refresh failed). Select a window to try again.
+            </p>
           </div>
-        ) : validPoints.length === 0 ? (
+        ) : null}
+
+        {validPoints.length === 0 ? (
           <div className="py-12 text-center text-sm text-[var(--muted)]">
-            <p>No historical rate snapshots recorded for the {selectedDays}-day window.</p>
+            <p>
+              No historical rate snapshots recorded for the {displayedDays}-day
+              window.
+            </p>
             <p className="mt-1 text-xs text-[var(--muted)]">
-              Rates are plotted only when independent anchors quote on this corridor.
+              Rates are plotted only when independent anchors quote on this
+              corridor.
             </p>
           </div>
         ) : (
           <div className="mt-4">
             <figure className="relative">
               <svg
-                aria-label={`Historical rate chart for ${corridorSlug} over the past ${selectedDays} days`}
+                aria-label={`Historical rate chart for ${corridorSlug} over the past ${displayedDays} days`}
                 role="img"
                 viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-                className="w-full h-auto overflow-visible select-none"
+                className="h-auto w-full overflow-visible select-none"
               >
                 <defs>
                   <linearGradient
@@ -259,16 +374,25 @@ export function CorridorRateHistoryChart({
                     x2="0"
                     y2="1"
                   >
-                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.18" />
-                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.0" />
+                    <stop
+                      offset="0%"
+                      stopColor="var(--accent)"
+                      stopOpacity="0.18"
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor="var(--accent)"
+                      stopOpacity="0.0"
+                    />
                   </linearGradient>
                 </defs>
 
-                {/* Horizontal Grid lines & Y Ticks */}
-                {yTicks.map((tick, i) => {
+                {/* Horizontal grid lines and Y ticks */}
+                {yTicks.map((tick, index) => {
                   const y = getY(tick.value);
+
                   return (
-                    <g key={i}>
+                    <g key={index}>
                       <line
                         x1={PADDING.left}
                         y1={y}
@@ -277,6 +401,7 @@ export function CorridorRateHistoryChart({
                         stroke="var(--ghost)"
                         strokeDasharray="4,4"
                       />
+
                       <text
                         x={PADDING.left - 10}
                         y={y + 4}
@@ -291,11 +416,12 @@ export function CorridorRateHistoryChart({
                   );
                 })}
 
-                {/* X Ticks & Vertical Guides */}
-                {xTicks.map((tick, i) => {
+                {/* X ticks and vertical guides */}
+                {xTicks.map((tick, index) => {
                   const x = getX(tick.time);
+
                   return (
-                    <g key={i}>
+                    <g key={index}>
                       <line
                         x1={x}
                         y1={PADDING.top}
@@ -304,6 +430,7 @@ export function CorridorRateHistoryChart({
                         stroke="var(--ghost)"
                         strokeDasharray="2,4"
                       />
+
                       <text
                         x={x}
                         y={SVG_HEIGHT - PADDING.bottom + 20}
@@ -318,26 +445,34 @@ export function CorridorRateHistoryChart({
                   );
                 })}
 
-                {/* Line Segments & Area under line */}
-                {segments.map((seg, segIdx) => {
-                  if (seg.length === 0) return null;
-                  const lineD = seg.reduce(
-                    (acc, pt, idx) => `${acc} ${idx === 0 ? "M" : "L"} ${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`,
+                {/* Line segments and area under each line */}
+                {segments.map((segment, segmentIndex) => {
+                  if (segment.length === 0) return null;
+
+                  const lineD = segment.reduce(
+                    (accumulator, point, index) =>
+                      `${accumulator} ${
+                        index === 0 ? "M" : "L"
+                      } ${point.x.toFixed(2)} ${point.y.toFixed(2)}`,
                     "",
                   );
 
-                  const firstPt = seg[0]!;
-                  const lastPt = seg[seg.length - 1]!;
+                  const firstPoint = segment[0]!;
+                  const lastPoint = segment[segment.length - 1]!;
                   const bottomY = PADDING.top + CHART_HEIGHT;
-                  const areaD = `${lineD} L ${lastPt.x.toFixed(2)} ${bottomY} L ${firstPt.x.toFixed(2)} ${bottomY} Z`;
+
+                  const areaD = `${lineD} L ${lastPoint.x.toFixed(
+                    2,
+                  )} ${bottomY} L ${firstPoint.x.toFixed(2)} ${bottomY} Z`;
 
                   return (
-                    <g key={segIdx}>
+                    <g key={segmentIndex}>
                       <path
                         d={areaD}
                         fill={`url(#${chartId}-area-grad)`}
                         pointerEvents="none"
                       />
+
                       <path
                         d={lineD}
                         fill="none"
@@ -350,43 +485,57 @@ export function CorridorRateHistoryChart({
                   );
                 })}
 
-                {/* Point markers & hover target zones */}
-                {validPoints.map((pt, idx) => {
-                  const cx = getX(pt.time);
-                  const cy = getY(pt.rate);
-                  const isHovered = hoveredPointIndex === pt.originalIndex;
+                {/* Point markers and hover target zones */}
+                {validPoints.map((point, index) => {
+                  const cx = getX(point.time);
+                  const cy = getY(point.rate);
+                  const isHovered =
+                    hoveredPointIndex === point.originalIndex;
 
                   return (
-                    <g key={idx}>
-                      {/* Invisible larger target for easy hovering */}
+                    <g key={index}>
+                      {/* Invisible larger target for easier interaction */}
                       <circle
                         cx={cx}
                         cy={cy}
                         r="12"
                         fill="transparent"
                         className="cursor-pointer"
-                        onMouseEnter={() => setHoveredPointIndex(pt.originalIndex)}
+                        onMouseEnter={() =>
+                          setHoveredPointIndex(point.originalIndex)
+                        }
                         onMouseLeave={() => setHoveredPointIndex(null)}
-                        onFocus={() => setHoveredPointIndex(pt.originalIndex)}
+                        onFocus={() =>
+                          setHoveredPointIndex(point.originalIndex)
+                        }
                         onBlur={() => setHoveredPointIndex(null)}
                         tabIndex={0}
-                        aria-label={`Snapshot on ${new Date(pt.time).toLocaleString()}: median rate ${pt.point.medianRate}`}
+                        aria-label={`Snapshot on ${new Date(
+                          point.time,
+                        ).toLocaleString()}: median rate ${
+                          point.point.medianRate
+                        }`}
                       />
+
                       <circle
                         cx={cx}
                         cy={cy}
                         r={isHovered ? 6 : 3.5}
-                        fill={isHovered ? "var(--white)" : "var(--accent)"}
+                        fill={
+                          isHovered ? "var(--white)" : "var(--accent)"
+                        }
                         stroke="var(--black)"
                         strokeWidth="2"
-                        className="transition-all duration-150 pointer-events-none"
+                        className="pointer-events-none transition-all duration-150"
                       />
                     </g>
                   );
                 })}
               </svg>
+
               <figcaption className="sr-only">
-                Chart showing {validPoints.length} median rate snapshots for {corridorSlug} over {selectedDays} days.
+                Chart showing {validPoints.length} median rate snapshots for{" "}
+                {corridorSlug} over {displayedDays} days.
               </figcaption>
             </figure>
 
@@ -401,9 +550,10 @@ export function CorridorRateHistoryChart({
               {activePoint ? (
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ghost)] pb-2 text-xs">
-                    <span className="text-[var(--white)] font-medium">
+                    <span className="font-medium text-[var(--white)]">
                       {new Date(activePoint.timestamp).toLocaleString()}
                     </span>
+
                     <span
                       className="rounded px-2 py-0.5 text-[11px] uppercase tracking-wide"
                       style={{
@@ -417,13 +567,17 @@ export function CorridorRateHistoryChart({
                             : "var(--muted)",
                       }}
                     >
-                      {activePoint.state === "healthy" ? "Healthy Median" : "Insufficient Fresh Sources"}
+                      {activePoint.state === "healthy"
+                        ? "Healthy Median"
+                        : "Insufficient Fresh Sources"}
                     </span>
                   </div>
 
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
                     <div>
-                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted)]">Median Rate</p>
+                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                        Median Rate
+                      </p>
                       <p
                         className="text-lg font-medium text-[var(--white)]"
                         style={{ fontFamily: "var(--display)" }}
@@ -431,23 +585,35 @@ export function CorridorRateHistoryChart({
                         {activePoint.medianRate ?? "Unavailable"}
                       </p>
                     </div>
+
                     <div>
-                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted)]">Sources</p>
+                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                        Sources
+                      </p>
                       <p className="text-sm text-[var(--white)]">
-                        {activePoint.freshSourceCount} fresh ({activePoint.sourceCount} total)
+                        {activePoint.freshSourceCount} fresh (
+                        {activePoint.sourceCount} total)
                       </p>
                     </div>
+
                     <div>
-                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted)]">Observations</p>
+                      <p className="text-[11px] uppercase tracking-wide text-[var(--muted)]">
+                        Observations
+                      </p>
                       <p className="text-xs text-[var(--muted)]">
-                        {activePoint.observations.map((o) => `${o.anchor.name} (${o.rate})`).join(", ")}
+                        {activePoint.observations
+                          .map((observation) =>
+                            `${observation.anchor.name} (${observation.rate})`,
+                          )
+                          .join(", ")}
                       </p>
                     </div>
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-[var(--muted)] text-center py-1">
-                  Hover or focus on any rate point in the timeline to inspect detailed snapshot observations.
+                <p className="py-1 text-center text-xs text-[var(--muted)]">
+                  Hover or focus on any rate point in the timeline to inspect
+                  detailed snapshot observations.
                 </p>
               )}
             </div>

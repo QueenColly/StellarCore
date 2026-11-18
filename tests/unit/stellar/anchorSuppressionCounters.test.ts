@@ -32,10 +32,9 @@ function makeDependencies(
 ): Readonly<{ dependencies: AnchorSyncDependencies; statuses: Map<string, string> }> {
   const statuses = new Map<string, string>([["moneygram", "LIVE"]]);
   let run = 0;
-  let order = 0n;
-  const lastOrders = new Map<string, bigint>();
 
   const dependencies: AnchorSyncDependencies = {
+    allocateOrder: async () => 1n,
     discover: async (entry) => {
       run += 1;
       if (runOutcome(run).discovery === "FAIL") {
@@ -43,13 +42,11 @@ function makeDependencies(
       }
       return Object.freeze({ ...entry }) as DiscoveredAnchor;
     },
-    allocateOrder: async () => ++order,
-    persist: async (anchor, writeOrder) => {
+    persist: async (anchor) => {
       if (runOutcome(run).persistence === "FAIL") {
         throw new Error("simulated persistence failure");
       }
       statuses.set(anchor.slug, "LIVE");
-      lastOrders.set(anchor.slug, writeOrder);
       return {
         slug: anchor.slug,
         name: anchor.name,
@@ -148,10 +145,10 @@ test("recovery resets suppression only when discovery and persistence both succe
 
 test("recovery-probe failures remain distinguishable from ordinary failed runs", async () => {
   const notFound: AnchorSyncDependencies = {
+    allocateOrder: async () => 1n,
     discover: async () => {
       throw new Error("simulated discovery failure");
     },
-    allocateOrder: async () => 1n,
     persist: async () => {
       throw new Error("must not be reached");
     },
@@ -177,8 +174,8 @@ test("recovery-probe failures remain distinguishable from ordinary failed runs",
   );
 
   const persistedOnlyFailed: AnchorSyncDependencies = {
-    discover: async (entry) => Object.freeze({ ...entry }) as DiscoveredAnchor,
     allocateOrder: async () => 1n,
+    discover: async (entry) => Object.freeze({ ...entry }) as DiscoveredAnchor,
     persist: async () => {
       throw new Error("simulated persistence failure");
     },

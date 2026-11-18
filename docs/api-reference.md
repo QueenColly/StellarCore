@@ -32,24 +32,6 @@ by copying README examples.
 { "error": { "code": "snake_case_code", "message": "Human-readable message." } }
 ```
 
-- **Request correlation:** error responses also carry an optional, additive
-  `error.requestId`, and the same value is returned in the `X-Request-Id`
-  response header. It is a non-sensitive correlation id for support and log
-  matching, never a credential or an internal identifier.
-
-  - A client may send its own `X-Request-Id` (8–64 characters, starting
-    alphanumerically, then `A-Z a-z 0-9 . _ -`) and it is propagated, so a
-    client or proxy can follow its own trace id. Values outside that pattern
-    (whitespace, control characters, quotes, URLs/connection strings, path
-    traversal, too short, too long) are **replaced** with a generated id and
-    never echoed back.
-  - The same id is written to the single-line structured failure log
-    (`[stellarcore:public-api] {"event":"public_api_error","operation":…,"code":…,"requestId":…}`),
-    which is how an operator turns a user-reported reference into the matching
-    server entry.
-  - Error bodies still contain only `code`, `message`, and this id: no stack
-    traces, credentials, SQL, or database connection details.
-
 - **Rate limiting:** all eight public routes are rate limited per client IP
   (see [Rate limiting](#rate-limiting) at the end). The single internal cron
   route is **not** rate limited.
@@ -700,11 +682,8 @@ IP** (`lib/api/rateLimiter.ts`).
 ### 429 Too Many Requests
 
 ```json
-{ "error": { "code": "rate_limited", "message": "Too many requests. Please try again later.", "requestId": "5cf4e241-a328-4881-a1e3-8b319d8a7320" } }
+{ "error": { "code": "rate_limited", "message": "Too many requests. Please try again later." } }
 ```
-
-A `429` carries the same `X-Request-Id` header as any other failure, so a rate
-limiter rejection can be correlated with the log entry that recorded it.
 
 The interaction with path segments: because each route enforces the shared
 `getRateLimiter()` singleton, an overloaded client is rejected on **every**

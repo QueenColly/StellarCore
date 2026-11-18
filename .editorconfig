@@ -1,6 +1,5 @@
 root = true
 
-# Base defaults for all files
 [*]
 charset = utf-8
 end_of_line = lf
@@ -9,22 +8,15 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 tab_width = 2
-cursor_max_line_length = off
 
-# TypeScript / JavaScript / JSON / YAML / CSS / Markdown
-[*.{ts,tsc,tsx,js,jsx,mjs,cjs,json,jsonc,yaml,yml,css,md}]
+[*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,yaml,yml,css,md}]
 indent_style = space
 indent_size = 2
 tab_width = 2
-trim_trailing_whitespace = true
-insert_final_newline = true
-end_of_line = lf
 
-# Markdown: preserve trailing whitespace (two spaces mean a line break)
 [*.md]
 trim_trailing_whitespace = false
 
-# Makefiles require tabs
 [Makefile]
 indent_style = tab
 indent_size = tab
@@ -33,7 +25,5 @@ indent_size = tab
 indent_style = tab
 indent_size = tab
 
-# Lock files and generated artifacts should not be touched
 [package-lock.json]
-insert_final_newline = true
 trim_trailing_whitespace = false

@@ -1,0 +1,56 @@
+name: Migration smoke tests (clean PostgreSQL)
+
+on:
+  pull_request:
+    paths:
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/test-clean-db-migrations.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  migration-smoke-test:
+    name: Apply migrations to clean PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: stellarcore_test
+          POSTGRES_PASSWORD: stellarcore_test_password
+          POSTGRES_DB: stellarcore_clean_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies cleanly
+        run: npm ci --ignore-scripts
+
+      - name: Apply committed migrations to clean database
+        env:
+          DATABASE_URL: postgresql://stellarcore_test:stellarcore_test_password@localhost:5432/stellarcore_clean_test
+          STELLARCORE_ENVIRONMENT: test
+        run: npx prisma migrate deploy
+
+      - name: Verify migration status matches clean database
+        env:
+          DATABASE_URL: postgresql://stellarcore_test:stellarcore_test_password@localhost:5432/stellarcore_clean_test
+          STELLARCORE_ENVIRONMENT: test
+        run: npx prisma migrate status

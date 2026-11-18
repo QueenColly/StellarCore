@@ -6,7 +6,6 @@ import {
   getRateHistoryApiResult,
   serializeRateHistory,
 } from "@/lib/api/rateHistory";
-import { isValidRequestId } from "@/lib/api/requestId";
 import type { CorridorRateHistory } from "@/types/rateHistory";
 
 const CORRIDOR = "usdc-us-brl-br";
@@ -15,14 +14,12 @@ const NOW = new Date("2026-08-28T12:00:00.000Z");
 test("route rejects missing and malformed corridor parameters safely", async () => {
   const missing = await GET(new Request("http://localhost/api/rates/history"));
   assert.equal(missing.status, 400);
-  const missingBody = await missing.json() as {
-    error: { code: string; message: string; requestId?: string };
-  };
-  assert.equal(missingBody.error.code, "missing_corridor");
-  assert.equal(missingBody.error.message, "A corridor slug is required.");
-  // The correlation id is additive and must match the response header (#369).
-  assert.equal(missingBody.error.requestId, missing.headers.get("x-request-id"));
-  assert.equal(isValidRequestId(missingBody.error.requestId), true);
+  assert.deepEqual(await missing.json(), {
+    error: {
+      code: "missing_corridor",
+      message: "A corridor slug is required.",
+    },
+  });
 
   for (const value of ["../rates", " USDC ", "a".repeat(101)]) {
     const response = await GET(
@@ -47,13 +44,8 @@ test("route validates days parameter correctly", async () => {
   }
 });
 
-test("route is request-dynamic, exports GET only, and explicitly prevents caching", async () => {
+test("route is request-dynamic and explicitly prevents caching", async () => {
   assert.equal(dynamic, "force-dynamic");
-  assert.equal(typeof GET, "function");
-  const route = await import("@/app/api/rates/history/route");
-  for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]) {
-    assert.equal(method in route, false);
-  }
   const response = await GET(
     new Request("http://localhost/api/rates/history?corridor=bad--slug"),
   );

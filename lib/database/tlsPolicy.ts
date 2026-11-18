@@ -22,15 +22,13 @@
  *    (`sslmode=disable`, `ssl=no-verify`) override any ssl object the Pool
  *    config supplies, so a bypass could be smuggled in through the URL.
  * 3. `sslmode=require`/`verify-ca` downgrade certificate verification
- *    when interpreted by the driver on their own.
+ *    (rejectUnauthorized: false in the vendored driver) — encryption without
+ *    authentication, which is not verified TLS.
  *
  * StellarCore therefore parses and classifies the URL itself, strips TLS
  * parameters from the URL handed to the driver, and passes an explicit ssl
  * object with `rejectUnauthorized: true` (and a CA when configured) directly
- * in the Pool config — the last word on transport security. A managed
- * provider's `sslmode=require` is not itself a reason to reject startup when
- * the parameter is removed before the driver sees it and replaced with this
- * policy-owned verified-TLS configuration.
+ * in the Pool config — the last word on transport security.
  */
 
 export type DatabaseTlsMode =
@@ -53,6 +51,7 @@ export type DatabaseTlsSource =
   /** SSL_MODE_TARGET / SSL_ROOT_CERT env vars (StellarCore-specific CA config). */
   | "STELLARCORE_ENVIRONMENT";
 
+/** A diagnostic for why a URL's TLS posture was classified the way it was. */
 export type TlsConfigurationSignal = Readonly<{
   mode: DatabaseTlsMode;
   source: DatabaseTlsSource | null;
@@ -138,20 +137,6 @@ const SSL_URL_PARAMETERS = [
 const BYPASS_MODES: ReadonlySet<string> = new Set(["disable", "no-verify", "prefer"]);
 const REQUIRE_MODES: ReadonlySet<string> = new Set(["require", "verify-ca", "allow"]);
 
-/**
- * Relative strength of each declared posture, weakest first. When a URL
- * declares TLS more than once (`sslmode` and `ssl`, or a repeated `sslmode`),
- * the weakest declaration decides, so a bypass can never hide behind a
- * stronger parameter and the outcome never depends on parameter order.
- */
-const MODE_STRENGTH: Readonly<Record<DatabaseTlsMode, number>> = {
-  DISABLED: 0,
-  NO_VERIFY: 1,
-  UNSET: 2,
-  REQUIRE: 3,
-  VERIFY_FULL: 4,
-};
-
 /** Strips every TLS-related parameter from a PostgreSQL URL. */
 export function stripTlsParameters(databaseUrl: string): string {
   if (!databaseUrl) return databaseUrl;
@@ -187,9 +172,7 @@ export function stripTlsParameters(databaseUrl: string): string {
 
 /**
  * Classifies the TLS posture the connection URL itself declares. Returns null
- * when the URL carries no TLS parameters at all. Conflicting declarations
- * resolve to the weakest one (see MODE_STRENGTH); the returned signal names
- * the parameter that decided.
+ * when the URL carries no TLS parameters at all.
  */
 export function classifyUrlTlsParameters(databaseUrl: string): TlsConfigurationSignal | null {
   if (!databaseUrl) return null;
@@ -202,23 +185,26 @@ export function classifyUrlTlsParameters(databaseUrl: string): TlsConfigurationS
     return null;
   }
 
-  const declarations: TlsConfigurationSignal[] = [
-    ...params.getAll("sslmode").map((value): TlsConfigurationSignal => ({
-      mode: classifyModeValue(value),
+  const sslMode = params.get("sslmode");
+  const sslFlag = params.get("ssl");
+
+  if (sslMode !== null) {
+    return {
+      mode: classifyModeValue(sslMode),
       source: "URL_PARAMETER",
       parameter: "sslmode",
-    })),
-    ...params.getAll("ssl").map((value): TlsConfigurationSignal => ({
-      mode: classifySslFlagValue(value),
-      source: "URL_PARAMETER",
-      parameter: "ssl",
-    })),
-  ];
+    };
+  }
 
-  if (declarations.length > 0) {
-    return declarations.reduce((weakest, candidate) =>
-      MODE_STRENGTH[candidate.mode] < MODE_STRENGTH[weakest.mode] ? candidate : weakest,
-    );
+  if (sslFlag !== null) {
+    const normalized = sslFlag.trim().toLowerCase();
+    if (normalized === "0" || normalized === "false") {
+      return { mode: "DISABLED", source: "URL_PARAMETER", parameter: "ssl" };
+    }
+    if (normalized === "no-verify") {
+      return { mode: "NO_VERIFY", source: "URL_PARAMETER", parameter: "ssl" };
+    }
+    return { mode: "VERIFY_FULL", source: "URL_PARAMETER", parameter: "ssl" };
   }
 
   if (params.has("sslrootcert") || params.has("sslcert") || params.has("sslkey")) {
@@ -226,15 +212,6 @@ export function classifyUrlTlsParameters(databaseUrl: string): TlsConfigurationS
   }
 
   return null;
-}
-
-function classifySslFlagValue(value: string): DatabaseTlsMode {
-  const normalized = value.trim().toLowerCase();
-
-  if (normalized === "0" || normalized === "false") return "DISABLED";
-  if (normalized === "no-verify") return "NO_VERIFY";
-
-  return "VERIFY_FULL";
 }
 
 /**
@@ -277,16 +254,20 @@ function classifyModeValue(value: string): DatabaseTlsMode {
  * Resolves the effective TLS policy for a database connection.
  *
  * Production-like runtimes:
- * - TLS is supplied explicitly by this policy and always verifies certificates.
- * - TLS parameters that disable encryption or bypass certificate verification
- *   are rejected (except the separately gated, explicit emergency bypass).
- * - URL TLS parameters are removed before the driver sees the URL, so
- *   provider defaults such as sslmode=require can be safely upgraded to
- *   authenticated TLS by the explicit Pool ssl configuration.
- * - A provider CA is optional when the server chains to a public root trusted
- *   by Node; STELLARCORE_DB_CA or STELLARCORE_DB_CA_PATH can provide one.
+ * - TLS must be configured (URL parameter, PG env, or StellarCore CA env).
+ * - The only accepted mode is verified TLS (`VERIFY_FULL` semantics:
+ *   `rejectUnauthorized: true`).
+ * - Bypass modes and disable are rejected, unless the emergency bypass flag
+ *   is set to the exact documented value — and even then the decision is
+ *   returned as an explicit bypass, never silently.
+ * - Verified TLS with no CA material is accepted only when the host uses a
+ *   publicly trusted certificate (the CA check is satisfied by the Node trust
+ *   store); StellarCore treats the absence of CA configuration as acceptable
+ *   for managed providers whose certificates chain to public roots, which is
+ *   the standard Vercel/Supabase posture. A provided CA is optional hardening.
  *
- * Non-production runtimes retain permissive local-development behavior.
+ * Non-production runtimes: no constraint is enforced; a policy object is
+ * still resolved so behavior is explicit rather than driver-defaulted.
  */
 export function resolveDatabaseTlsPolicy(
   input: TlsPolicyEnvironmentInput,
@@ -304,6 +285,8 @@ export function resolveDatabaseTlsPolicy(
 
   switch (effectiveMode) {
     case "DISABLED": {
+      // Plaintext is never acceptable in production, even under the emergency
+      // gate: the gate only authorizes unverified TLS, not unencrypted.
       if (input.isProductionLike) {
         return reject(
           "PRODUCTION_TLS_DISABLED",
@@ -336,6 +319,7 @@ export function resolveDatabaseTlsPolicy(
         };
       }
 
+      // UNSET in production: policy provides verified TLS explicitly.
       return {
         accepted: true,
         mode: "VERIFY_FULL",
@@ -347,6 +331,18 @@ export function resolveDatabaseTlsPolicy(
     }
 
     case "VERIFY_FULL": {
+      if (!input.isProductionLike) {
+        // Development explicitly requested verified TLS: honor it.
+        return {
+          accepted: true,
+          mode: "VERIFY_FULL",
+          sslConfig: Object.freeze({
+            rejectUnauthorized: true,
+            ...(input.inlineCa ? { ca: input.inlineCa } : {}),
+          }),
+        };
+      }
+
       return {
         accepted: true,
         mode: "VERIFY_FULL",

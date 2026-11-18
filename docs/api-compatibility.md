@@ -47,6 +47,17 @@ Canonical fixtures live in `contracts/api/v1/fixtures/` and are tracked by `cont
 | **Reputation** | `GET /api/reputation`<br>`GET /api/reputation/:slug` | Multi-anchor list, empty list, list 500 error, established detail with complete metrics, insufficient evidence detail, not evaluated detail, invalid slug 400, unknown anchor 404, detail 500 error | 9 fixtures |
 | **Total** | | | **31 fixtures** |
 
+### Dashboard Panel Contracts
+
+The `/dashboard` panels render the same canonical fixtures, so a response-shape change that would break the UI is caught even when the serializer and fixture agree. `tests/support/dashboardContracts.ts` loads the fixtures above (it does not copy them) and lists, per panel, the fields its view reads from a successful response. `tests/unit/frontend/dashboardApiContracts.test.ts` renders each pure view (`AnchorsSectionView`, `CorridorsSectionView`, `RatePanelView`, `ReputationSectionView`) and checks that:
+
+- success fixtures provide every consumed field with the expected type, and the rendered markup shows their values;
+- removing, renaming, or retyping any consumed field is reported as a contract violation;
+- valid empty results render the panel's empty state, never an error;
+- error payloads keep the `{ error: { code, message } }` envelope, render as alerts, and never satisfy the success contract.
+
+When a panel starts reading a new field, add it to that panel's `consumedFields` entry.
+
 ### Nondeterministic Field Normalization
 
 Certain fields in API responses naturally vary across executions:

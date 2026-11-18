@@ -79,30 +79,47 @@ knows published advisories (no zero-days, no malicious-package heuristics);
 gitleaks' entropy rules can miss short, low-entropy passwords — mitigated
 here by the manual credential-URL pass; history from squashed/rebased-away
 commits that were never pushed to this repository is not observable.
-## 3. Raw SQL boundary audit — Prisma `$queryRaw` / `$executeRaw`
 
-Companion audit to the dependency and secrets passes above, covering every
-raw-SQL boundary in the repository. Scope: `$queryRaw`, `$queryRawUnsafe`,
-`$executeRaw`, `$executeRawUnsafe`, `Prisma.sql`, `Prisma.raw`,
-`Prisma.join`, and `Prisma.raw`-style template helpers.
 
-### 3.1 Inventory of raw SQL call sites
+## 3. Raw SQL boundary audit
 
-| Location | API | Purpose | Reviewed |
-| -------- | --- | ------- | -------- |
-| `lib/db/latest-observation.ts` | `Prisma.sql` + `$queryRaw` | Latest observation per asset via `DISTINCT ON` | ✅ parameterized |
-| `lib/db/latest-observation.ts` | `Prisma.sql` + `$queryRaw` | Latest observation filtered by asset slug | ✅ parameterized |
-| `lib/db/search.ts` | `Prisma.sql` + `$queryRaw` | Full-text/ILIKE search over observations | ✅ parameterized |
-| `lib/db/aggregates.ts` | `Prisma.sql` + `$queryRaw` | Time-bucketed aggregates for charts | ✅ parameterized |
+StellarCore treats every Prisma raw-SQL call as a reviewed security boundary.
+Run `npm run audit:sql` to inventory these boundaries and fail on unreviewed
+raw-query files, unsafe APIs, or `Prisma.raw` fragments.
 
-No call site in the repository currently uses `$queryRawUnsafe`,
-`$executeRawUnsafe`, `Prisma.raw`, or string-concatenated SQL. This is the
-baseline the guardrails below are designed to preserve.
+### 3.1 Reviewed call sites
 
-### 3.2 Approved parameterization patterns
+| Location | API | Purpose | Review status |
+| --- | --- | --- | --- |
+| `lib/rates/latestRateRepository.ts` | `Prisma.sql` + `$queryRaw` | Latest rate observation per anchor/corridor | Values are bound parameters; identifiers are constant SQL |\n| `lib/rates/rateHistoryRepository.ts` | `Prisma.sql` + `$queryRaw` | Bounded rate history for one corridor and time range | Corridor/timestamp values are bound parameters; identifiers are constant SQL |
+| `lib/reputation/repository.ts` | `Prisma.sql` + `$queryRaw` | Latest rate evidence per corridor for reputation | Values are bound parameters; identifiers are constant SQL |
+| `lib/reputation/snapshot.ts` | `Prisma.sql` + `$queryRaw`; reviewed `$executeRawUnsafe` exception | Read-only repeatable-read snapshot setup and identity | The unsafe exception is exactly the constant statement `SET TRANSACTION READ ONLY`; no input or identifier is interpolated |
+| `lib/stellar/anchorSync.ts` | tagged `$executeRaw` / `$queryRaw` | Monotonic anchor persistence and sync-order allocation | Interpolated values are Prisma-bound parameters; table/column names are constants |
+| `lib/config/environmentGuardDb.ts` | tagged `$queryRaw` | Read deployment environment stamp absent from Prisma schema | Query text is constant |
+| `scripts/stamp-database-environment.ts` | tagged `$queryRaw` / `$executeRaw` | Protected operator environment stamping | Values are bound and the statement structure is constant |
 
-**Values (always parameterized).** Every user-controlled value — slugs,
-search terms, filter strings, pagination cursors, timestamps — must be
-passed through a `Prisma.sql` template placeholder (`${value}`), never
-concatenated into the SQL string. Prisma emits these as bound parameters
-on the wire, so injection payloads cannot alter query structure.
+No reviewed production boundary may use `Prisma.raw`. New raw-SQL call sites must
+be added to the explicit audit allowlist together with tests and documentation.
+
+### 3.2 Approved construction rules
+
+User-controlled values must be passed through Prisma tagged templates or
+`Prisma.sql` placeholders. They must never be concatenated into SQL text.
+
+Dynamic identifiers are not accepted from user input. If a future feature truly
+requires selecting among identifiers, the identifier must first be mapped from a
+closed, reviewed allowlist to a constant SQL fragment. Direct use of
+`Prisma.raw` remains blocked by the repository audit.
+
+The single reviewed unsafe-API exception is the exact constant-only transaction
+statement in `lib/reputation/snapshot.ts`. Any additional
+`$queryRawUnsafe` or `$executeRawUnsafe` usage fails CI until explicitly
+reviewed.
+
+### 3.3 Enforcement and regression coverage
+
+`.github/workflows/audit-raw-sql.yml` runs the repository-wide audit on raw-SQL
+and application changes. It also executes
+`tests/unit/security/rawSqlBoundaries.test.ts`, which feeds adversarial SQL-like
+values into the production query builders and verifies that query text is
+unchanged while the payload appears only in the bound parameter list.

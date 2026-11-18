@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AnchorsSection } from "@/components/dashboard/AnchorsSection";
 import { CorridorsSection } from "@/components/dashboard/CorridorsSection";
-import { DashboardAutoRefresh } from "@/components/dashboard/DashboardAutoRefresh";
 import { RatePanel } from "@/components/dashboard/RatePanel";
 import { ReputationSection } from "@/components/dashboard/ReputationSection";
 import { SectionSkeleton } from "@/components/dashboard/SectionStates";
@@ -24,7 +23,6 @@ export default function DashboardPage() {
         id="main-content"
         className="min-h-screen bg-[var(--black)] px-4 py-8 text-[var(--white)] sm:px-8 sm:py-10 lg:px-12"
       >
-        <DashboardAutoRefresh />
         <div className="mx-auto max-w-6xl">
           <header className="max-w-3xl">
             <p className="eyebrow">Public evidence console</p>

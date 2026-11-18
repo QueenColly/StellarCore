@@ -1,4 +1,3 @@
-
 # StellarCore architecture
 
 This document describes the behavior implemented in the current repository.
@@ -18,17 +17,17 @@ The main data path is:
 
 ```text
 reviewed registries
-       │
-       ├── manual bootstrap ──> anchor/corridor database records
-       │
-       └── scheduled refresh ──> SEP-38 rate snapshots
-                                     │
-                                     └──> reputation evaluation
-                                               │
-database read models <────────────────────────┘
-       │
-       ├── public JSON APIs
-       └── server-rendered dashboard
+        │
+        ├── manual bootstrap ──> anchor/corridor database records
+        │
+        └── scheduled refresh ──> SEP-38 rate snapshots
+                                      │
+                                      └──> reputation evaluation
+                                                │
+database read models <──────────────────────────┘
+        │
+        ├── public JSON APIs
+        └── server-rendered dashboard
 ```
 
 ## Sync engine
@@ -55,6 +54,14 @@ fetches each source with the SEP-38 client, validates the response, and
 persists successful observations as individual rate snapshots. A failed
 source is isolated and reported; it does not turn an unverified response into
 evidence.
+
+Every persisted snapshot is written together with immutable capture-time
+provenance: the capture-run identity, reviewed source type, anchor/corridor
+identity, reviewed configuration digest, and request-shape version used to
+select the candidate. Legacy snapshots predating provenance keep unknown
+lineage rather than reconstructed metadata. See `docs/rate-provenance.md` for
+the fingerprint canonicalization rules, redaction rules, and the internal
+trace path.
 
 The latest-rate read model selects the newest snapshot per anchor/corridor
 source, evaluates freshness at read time, and calculates a median only from
@@ -116,20 +123,14 @@ API present the same persisted evidence and uncertainty semantics.
 persisted evidence graph. It loads a bounded snapshot of anchors, corridors,
 reviewed memberships, rate snapshots, transfer outcomes, and reputation rows
 using `findMany` selects only, then evaluates cross-table semantic invariants
-that PostgreSQL constraints cannot fully express. These include missing
-reviewed memberships, impossible anchor/corridor relationships, incompatible
-timestamps, invalid score/evidence combinations, and duplicate corridor
-identities.
+that database constraints cannot fully express.
 
-The pure `evaluateEvidenceIntegrity` step reports bounded, deterministic
-findings keyed by stable record identifiers and violation codes, with
-per-class, non-destructive remediation guidance. It never loads raw payloads
-into the report, never mutates its input, and never writes, updates, deletes,
-or opens a transaction. The JSON boundary is safe for CI and operator logs.
-
-Database constraints and boundary validation remain the first line of write
-protection; this audit detects drift after migrations, imports, or operational
-mistakes.
+The pure evaluator emits bounded, deterministic findings keyed by stable record
+identifiers, violation codes, and non-destructive remediation guidance. It does
+not include raw evidence payloads in reports and does not write, update, delete,
+or open a transaction. Database constraints and write-boundary validation remain
+the first line of defense; this audit detects drift after migrations, imports,
+or operational mistakes.
 
 ## Scheduled refresh and operations
 

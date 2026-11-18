@@ -14,19 +14,6 @@ export interface MockPostgresServer {
   getActiveConnectionsCount(): number;
   getTotalConnectionsCount(): number;
   getQueryCount(): number;
-  /** Upper-cased text of every simple query received, in arrival order. */
-  getQueryLog(): readonly string[];
-  /**
-   * Leaves the server listening but makes every currently open connection
-   * stale: its next query is dropped without a response (like a half-open
-   * socket after a NAT/proxy idle timeout). New connections stay healthy.
-   */
-  markExistingConnectionsStale(): void;
-  /**
-   * Leaves the server listening but terminates every currently open backend
-   * with a FATAL error (like pg_terminate_backend or idle_session_timeout).
-   */
-  terminateExistingConnections(code?: string): void;
   simulateCrash(): void;
   close(): Promise<void>;
 }
@@ -38,8 +25,6 @@ export async function createMockPostgresServer(
   const activeSockets = new Set<net.Socket>();
   let totalConnections = 0;
   let queryCount = 0;
-  const queryLog: string[] = [];
-  const staleSockets = new WeakSet<net.Socket>();
 
   const server = net.createServer((socket) => {
     totalConnections += 1;
@@ -90,9 +75,8 @@ export async function createMockPostgresServer(
       if (type === "Q") {
         queryCount += 1;
         const queryText = data.subarray(5, data.length - 1).toString().trim().toUpperCase();
-        queryLog.push(queryText);
 
-        if (mode === "DROP_ON_QUERY" || staleSockets.has(socket)) {
+        if (mode === "DROP_ON_QUERY") {
           socket.destroy();
           return;
         }
@@ -175,20 +159,6 @@ export async function createMockPostgresServer(
     },
     getQueryCount() {
       return queryCount;
-    },
-    getQueryLog() {
-      return [...queryLog];
-    },
-    markExistingConnectionsStale() {
-      for (const socket of activeSockets) {
-        staleSockets.add(socket);
-      }
-    },
-    terminateExistingConnections(code = "57P01") {
-      for (const socket of activeSockets) {
-        sendErrorResponse(socket, code, "terminating connection due to administrator command");
-        socket.end();
-      }
     },
     simulateCrash() {
       for (const socket of activeSockets) {

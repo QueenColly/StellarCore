@@ -1,4 +1,3 @@
-import * as React from "react";
 type BadgeTone = "positive" | "warning" | "negative" | "neutral";
 
 const TONE_CLASSES: Record<BadgeTone, string> = {

@@ -40,8 +40,6 @@ export type CorridorsApiErrorResponse = Readonly<{
   error: Readonly<{
     code: "invalid_pagination" | "internal_error";
     message: string;
-    /** Optional, additive request-correlation id (see `lib/api/requestId.ts`). */
-    requestId?: string;
   }>;
 }>;
 
@@ -49,8 +47,6 @@ export type CorridorApiErrorResponse = Readonly<{
   error: Readonly<{
     code: CorridorApiErrorCode;
     message: string;
-    /** Optional, additive request-correlation id (see `lib/api/requestId.ts`). */
-    requestId?: string;
   }>;
 }>;
 

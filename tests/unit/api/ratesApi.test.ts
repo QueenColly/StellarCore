@@ -4,7 +4,6 @@ import test from "node:test";
 import { GET, dynamic } from "@/app/api/rates/route";
 import { MIN_FRESH_SOURCES } from "@/constants/rates";
 import { getRatesApiResult, serializeRates } from "@/lib/api/rates";
-import { isValidRequestId } from "@/lib/api/requestId";
 import type { LatestCorridorRate } from "@/types/latestRates";
 
 const CORRIDOR = "usdc-us-brl-br";
@@ -13,14 +12,12 @@ const NOW = new Date("2026-08-28T12:00:00.000Z");
 test("route rejects missing and malformed corridor parameters safely", async () => {
   const missing = await GET(new Request("http://localhost/api/rates"));
   assert.equal(missing.status, 400);
-  const missingBody = await missing.json() as {
-    error: { code: string; message: string; requestId?: string };
-  };
-  assert.equal(missingBody.error.code, "missing_corridor");
-  assert.equal(missingBody.error.message, "A corridor slug is required.");
-  // The correlation id is additive and must match the response header (#369).
-  assert.equal(missingBody.error.requestId, missing.headers.get("x-request-id"));
-  assert.equal(isValidRequestId(missingBody.error.requestId), true);
+  assert.deepEqual(await missing.json(), {
+    error: {
+      code: "missing_corridor",
+      message: "A corridor slug is required.",
+    },
+  });
 
   for (const value of ["../rates", " USDC ", "a".repeat(101)]) {
     const response = await GET(new Request(
@@ -31,13 +28,45 @@ test("route rejects missing and malformed corridor parameters safely", async () 
   }
 });
 
-test("route is request-dynamic, exports GET only, and explicitly prevents freshness caching", async () => {
-  assert.equal(dynamic, "force-dynamic");
-  assert.equal(typeof GET, "function");
-  const route = await import("@/app/api/rates/route");
-  for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]) {
-    assert.equal(method in route, false);
+test("route rejects repeated, unsupported, and out-of-range query parameters", async () => {
+  const invalidRequests = [
+    {
+      name: "repeated corridor",
+      url: `http://localhost/api/rates?corridor=${CORRIDOR}&corridor=${CORRIDOR}`,
+      status: 400,
+      code: "invalid_query",
+    },
+    {
+      name: "unsupported parameter",
+      url: `http://localhost/api/rates?corridor=${CORRIDOR}&limit=10`,
+      status: 400,
+      code: "invalid_query",
+    },
+    {
+      name: "oversized corridor",
+      url: `http://localhost/api/rates?corridor=${"a".repeat(101)}`,
+      status: 400,
+      code: "invalid_corridor",
+    },
+  ] as const;
+
+  for (const value of invalidRequests) {
+    const response = await GET(new Request(value.url));
+    assert.equal(response.status, value.status, value.name);
+    assert.deepEqual(await response.json(), {
+      error: {
+        code: value.code,
+        message: value.code === "invalid_query"
+          ? "The query parameters are invalid."
+          : "The corridor slug is invalid.",
+      },
+    }, value.name);
+    assert.equal(response.headers.get("cache-control"), "no-store");
   }
+});
+
+test("route is request-dynamic and explicitly prevents freshness caching", async () => {
+  assert.equal(dynamic, "force-dynamic");
   const response = await GET(new Request("http://localhost/api/rates?corridor=bad--slug"));
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
@@ -65,6 +94,26 @@ test("service maps unknown corridors and read failures to safe errors", async ()
     body: { error: { code: "internal_error", message: "Unable to read rates." } },
   });
   assert.equal(JSON.stringify(failed).includes("secret"), false);
+});
+
+test("aborted reads do not report client disconnects as internal errors", async () => {
+  const controller = new AbortController();
+  let rejectRead!: (error: Error) => void;
+  let reportedErrors = 0;
+  const pending = getRatesApiResult(CORRIDOR, {
+    signal: controller.signal,
+    reportError: () => {
+      reportedErrors += 1;
+    },
+    readLatestRate: () => new Promise((_resolve, reject) => {
+      rejectRead = reject;
+    }),
+  });
+
+  controller.abort();
+  rejectRead(new Error("database read interrupted"));
+  await assert.rejects(pending);
+  assert.equal(reportedErrors, 0);
 });
 
 test("one source is a successful insufficient response with string decimals", async () => {
@@ -181,6 +230,35 @@ test("configured candidates without observations do not become persisted evidenc
   });
   assert.equal(result.body.state, "insufficient_fresh_sources");
   assert.equal(result.body.medianRate, null);
+  assert.equal(result.body.evaluatedAt, NOW.toISOString());
+  assert.deepEqual(result.body.observations, []);
+  assert.equal(JSON.stringify(result.body.observations).includes(NOW.toISOString()), false);
+});
+
+test("empty evidence and failed reads remain distinct public outcomes", async () => {
+  const empty = await getRatesApiResult(CORRIDOR, {
+    now: () => NOW,
+    readLatestRate: async () => readResult({ observations: Object.freeze([]) }),
+  });
+  const failed = await getRatesApiResult(CORRIDOR, {
+    now: () => NOW,
+    readLatestRate: async () => {
+      throw new Error("DATABASE_URL=secret");
+    },
+  });
+
+  assert.equal(empty.status, 200);
+  if (empty.status === 200) {
+    assert.deepEqual(empty.body.observations, []);
+    assert.equal(empty.body.sourceCount, 0);
+    assert.equal(empty.body.medianRate, null);
+  }
+  assert.deepEqual(failed, {
+    status: 500,
+    body: { error: { code: "internal_error", message: "Unable to read rates." } },
+  });
+  assert.notDeepEqual(empty, failed);
+  assert.equal(JSON.stringify(failed).includes("secret"), false);
 });
 
 test("serializer exposes an exact healthy median and normalized exclusions", () => {

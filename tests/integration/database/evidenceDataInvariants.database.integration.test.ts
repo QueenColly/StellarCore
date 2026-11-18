@@ -1,4 +1,3 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -54,8 +53,10 @@ test("PostgreSQL enforces rate and reputation evidence boundaries", {
       ["fee", "-0.000000000000000001"],
     ] as const) {
       await assert.rejects(
-        db.$executeRaw(
-          Prisma.sql`UPDATE rate_snapshots SET ${Prisma.raw(column)} = ${value}::numeric WHERE id = ${snapshot.id}::uuid`,
+        db.$executeRawUnsafe(
+          `UPDATE rate_snapshots SET ${column} = $1::numeric WHERE id = $2::uuid`,
+          value,
+          snapshot.id,
         ),
       );
     }
@@ -80,14 +81,17 @@ test("PostgreSQL enforces rate and reputation evidence boundaries", {
       [100, "green"],
     ] as const;
     for (const [value, band] of validStates) {
-      await db.$executeRaw`
-UPDATE reputation_scores SET state = 'ok', sample_size = 30,
-    composite_score = ${value}, score_band = ${band}::reputation_score_band,
-    fill_rate_7d = 0, fill_rate_30d = 1, fill_rate_90d = NULL,
-    settle_p50_ms = 0, settle_p95_ms = 0,
-    slippage_p50 = -0.02, slippage_p95 = 0.01
-  WHERE id = ${score.id}::uuid
-`;
+      await db.$executeRawUnsafe(
+        `UPDATE reputation_scores SET state = 'ok', sample_size = 30,
+          composite_score = $1, score_band = $2::reputation_score_band,
+          fill_rate_7d = 0, fill_rate_30d = 1, fill_rate_90d = NULL,
+          settle_p50_ms = 0, settle_p95_ms = 0,
+          slippage_p50 = -0.02, slippage_p95 = 0.01
+        WHERE id = $3::uuid`,
+        value,
+        band,
+        score.id,
+      );
     }
 
     const invalidUpdates = [
@@ -106,8 +110,9 @@ UPDATE reputation_scores SET state = 'ok', sample_size = 30,
     ];
     for (const update of invalidUpdates) {
       await assert.rejects(
-        db.$executeRaw(
-          Prisma.sql`UPDATE reputation_scores SET ${Prisma.raw(update)} WHERE id = ${score.id}::uuid`,
+        db.$executeRawUnsafe(
+          `UPDATE reputation_scores SET ${update} WHERE id = $1::uuid`,
+          score.id,
         ),
       );
     }
