@@ -1,5 +1,4 @@
 import { isValidAnchorSlug } from "@/lib/api/anchors";
-import { safeDecodePathSegment } from "@/lib/api/paths";
 import {
   FILE_STALE_EVIDENCE_STORE,
   restoreStaleEvidence,
@@ -32,8 +31,7 @@ export type ReputationApiDependencies = Readonly<{
   staleEvidenceStore?: StaleEvidenceStore;
   now?: () => Date;
   reportError?: PublicApiErrorReporter;
-  /** Correlation id published with failures and recorded in the failure log. */
-  requestId?: string;
+  signal?: AbortSignal;
 }>;
 
 export async function getReputationApiResult(
@@ -45,9 +43,15 @@ export async function getReputationApiResult(
   try {
     const repository = dependencies.repository ?? PRISMA_REPUTATION_API_REPOSITORY;
     const body = serializeReputationList(await repository.findAll());
+    if (dependencies.signal?.aborted) {
+      throw dependencies.signal.reason ?? new Error("The operation was aborted");
+    }
     await saveLastKnownGoodEvidence(store, key, body, reputationSourceTimes(body.reputation), now);
     return Object.freeze({ status: 200, body });
   } catch (error) {
+    if (dependencies.signal?.aborted) {
+      throw dependencies.signal.reason ?? new Error("The operation was aborted");
+    }
     if (isTransientDatabaseFailure(error)) {
       const stale = await restoreStaleEvidence(store, key, now);
       if (stale) {
@@ -59,11 +63,7 @@ export async function getReputationApiResult(
       }
     }
     reportError(dependencies, error, "reputation.list");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to load reputation.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to load reputation.");
   }
 }
 
@@ -71,36 +71,35 @@ export async function getAnchorReputationApiResult(
   slug: string,
   dependencies: ReputationApiDependencies = {},
 ): Promise<ReputationApiDetailResult> {
-  const decoded = safeDecodePathSegment(slug);
-  const normalizedSlug = decoded.ok ? decoded.value : slug;
-  if (!isValidAnchorSlug(normalizedSlug)) {
+  if (!isValidAnchorSlug(slug)) {
     return publicApiErrorResult(
       "invalid_anchor_slug",
       "A valid anchor slug is required.",
-      dependencies.requestId,
     );
   }
 
   const now = dependencies.now?.() ?? new Date();
   const store = dependencies.staleEvidenceStore ?? FILE_STALE_EVIDENCE_STORE;
-  const key = `reputation-detail:v1:${normalizedSlug}`;
+  const key = `reputation-detail:v1:${slug}`;
   try {
     const repository = dependencies.repository ?? PRISMA_REPUTATION_API_REPOSITORY;
-    const record = await repository.findBySlug(normalizedSlug);
+    const record = await repository.findBySlug(slug);
     if (!record) {
-      return publicApiErrorResult(
-        "anchor_not_found",
-        "Anchor not found.",
-        dependencies.requestId,
-      );
+      return publicApiErrorResult("anchor_not_found", "Anchor not found.");
     }
     const body = Object.freeze({ reputation: serializeReputation(record) });
+    if (dependencies.signal?.aborted) {
+      throw dependencies.signal.reason ?? new Error("The operation was aborted");
+    }
     await saveLastKnownGoodEvidence(store, key, body, reputationSourceTimes([body.reputation]), now);
     return Object.freeze({
       status: 200,
       body,
     });
   } catch (error) {
+    if (dependencies.signal?.aborted) {
+      throw dependencies.signal.reason ?? new Error("The operation was aborted");
+    }
     if (isTransientDatabaseFailure(error)) {
       const stale = await restoreStaleEvidence(store, key, now);
       if (stale) {
@@ -112,11 +111,7 @@ export async function getAnchorReputationApiResult(
       }
     }
     reportError(dependencies, error, "reputation.detail");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to load reputation.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to load reputation.");
   }
 }
 
@@ -202,6 +197,5 @@ function reportError(
   (dependencies.reportError ?? consolePublicApiErrorReporter)(error, {
     operation,
     code: "internal_error",
-    requestId: dependencies.requestId,
   });
 }

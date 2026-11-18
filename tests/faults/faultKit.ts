@@ -156,6 +156,10 @@ export type SnapshotLedgerRow = Readonly<{
   corridorSlug: string;
   rate: string;
   capturedAt: Date;
+  /** Capture-run identity persisted as provenance (#113). */
+  captureRunId: string;
+  /** Reviewed configuration digest persisted as provenance (#331, #113). */
+  configurationDigest: string;
 }>;
 
 export type SnapshotLedger = {
@@ -199,7 +203,10 @@ export function faultSnapshotRepository(
     corridorId: string;
     rate: string;
     capturedAt: Date;
-    configurationFingerprint: string;
+    provenance: {
+      captureRunId: string;
+      configurationDigest: string;
+    };
   }) => {
     const row: SnapshotLedgerRow = {
       id: `snapshot-${ledger.rows.length + 1}`,
@@ -207,17 +214,18 @@ export function faultSnapshotRepository(
       corridorSlug: input.corridorId.replace(/^corridor:/, ""),
       rate: input.rate,
       capturedAt: new Date(input.capturedAt.getTime()),
+      captureRunId: input.provenance.captureRunId,
+      configurationDigest: input.provenance.configurationDigest,
     };
     ledger.rows.push(row);
     return {
       id: row.id,
+      provenanceId: `provenance-${ledger.rows.length}`,
       rate: input.rate,
       sourceAmount: "0",
       destinationAmount: "0",
       fee: "0",
       capturedAt: new Date(input.capturedAt.getTime()),
-      configurationFingerprint: input.configurationFingerprint,
-      provenanceUnavailable: false,
     };
   };
 
@@ -231,7 +239,6 @@ export function faultSnapshotRepository(
     findCorridorBySlug: (slug: string) => corridorResponder(slug),
     hasAssociation: (anchorId: string, corridorId: string) =>
       associationResponder({ anchorId, corridorId }),
-    findProvenanceBySnapshotId: async () => null,
     createSnapshot: (input: Parameters<typeof okCreate>[0]) => createResponder(input),
   };
 }

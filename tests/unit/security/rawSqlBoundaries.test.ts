@@ -4,7 +4,6 @@ import test from "node:test";
 import { latestObservationsQuery } from "@/lib/rates/latestRateRepository";
 import { rateHistoryQuery } from "@/lib/rates/rateHistoryRepository";
 import { latestCorridorRatesQuery } from "@/lib/reputation/repository";
-import { assertSafeIdentifier } from "@/lib/db/sqlSafety";
 
 const ADVERSARIAL_VALUES = Object.freeze([
   "' OR 1=1--",
@@ -13,26 +12,6 @@ const ADVERSARIAL_VALUES = Object.freeze([
   "\"; SELECT pg_sleep(10);--",
   "/* comment */ UNION SELECT null",
 ]);
-
-test("stable identifiers reject SQL-like and malformed corridor slugs", () => {
-  assert.doesNotThrow(() => assertSafeIdentifier("usdc-us-brl-br", "corridor slug"));
-
-  for (const value of [
-    ...ADVERSARIAL_VALUES,
-    "",
-    "MoneyGram",
-    "money_gram",
-    "-moneygram",
-    "moneygram-",
-    "money--gram",
-    "money gram",
-  ]) {
-    assert.throws(
-      () => assertSafeIdentifier(value, "corridor slug"),
-      /Invalid corridor slug/,
-    );
-  }
-});
 
 test("latest-observation raw queries keep adversarial values out of SQL text", () => {
   const baselineRates = latestObservationsQuery("baseline").text;

@@ -188,3 +188,24 @@ test("mismatched stamps throw a typed isolation error", async () => {
   if (previous === undefined) delete TEST_ENV.STELLARCORE_ENVIRONMENT;
   else TEST_ENV.STELLARCORE_ENVIRONMENT = previous;
 });
+
+test("preview deployments cannot claim production environment or freshness (#381)", () => {
+  // Missing environment identity fails safely rather than defaulting to production
+  const missingResult = resolveRuntimeEnvironment({});
+  assert.equal(missingResult.ok, false);
+  if (!missingResult.ok) {
+    assert.equal(missingResult.code, "RUNTIME_ENVIRONMENT_MISSING");
+  }
+
+  // Preview environment is never paired with production database or claimed as production
+  assert.equal(isEnvironmentPairingAllowed("preview", "production"), false);
+  assert.equal(isEnvironmentPairingAllowed("test", "production"), false);
+  assert.equal(isEnvironmentPairingAllowed("production", "preview"), false);
+
+  const pairingVerdict = verifyEnvironmentPairing("preview", "production");
+  assert.equal(pairingVerdict.ok, false);
+  if (!pairingVerdict.ok) {
+    assert.equal(pairingVerdict.code, "ENVIRONMENT_MISMATCH");
+  }
+});
+

@@ -14,14 +14,11 @@ import type {
 type LatestRateRow = Readonly<{ corridorSlug: string; capturedAt: Date }>;
 
 /**
- * Raw SQL boundary for reputation evidence reads.
+ * The newest snapshot time per corridor for one anchor, as a bounded set of
+ * index probes instead of a walk over the anchor's history.
  *
- * Safety notes:
- * - The anchor Uuid is passed as a Prisma parameter (${anchor.id}), not interpolated
- *   into the SQL text.
- * - All table and column names are constant literals in this file. If a future performance
- *   change needs a dynamic identifier, use `resolveRawIdentifier` from
- *   `@/lib/db/rawSqlGuardrails`, which enforces the approved allowlist.
+ * Exported so differential tests and the benchmark run the exact SQL that
+ * production uses.
  */
 export function latestCorridorRatesQuery(anchorId: string): Prisma.Sql {
   return Prisma.sql`
@@ -40,6 +37,7 @@ export function latestCorridorRatesQuery(anchorId: string): Prisma.Sql {
     ORDER BY corridor.slug
   `;
 }
+
 export const PRISMA_REPUTATION_REPOSITORY: ReputationRepository = Object.freeze({
   async readEvidence(anchorSlug, outcomeWindowStart) {
     const { db, ensureDatabaseEnvironment } = await import("@/lib/dbClient");
@@ -49,7 +47,7 @@ export const PRISMA_REPUTATION_REPOSITORY: ReputationRepository = Object.freeze(
       readEvidenceInSnapshot(tx, identity, anchorSlug, outcomeWindowStart),
     );
 
-if (!snapshotResult.ok) return toEvidenceReadFailure(snapshotResult.failure);
+    if (!snapshotResult.ok) return toEvidenceReadFailure(snapshotResult.failure);
     return snapshotResult.value;
   },
 
@@ -73,54 +71,17 @@ if (!snapshotResult.ok) return toEvidenceReadFailure(snapshotResult.failure);
       computedAt: new Date(calculation.computedAt),
     } as const;
 
-    const rows = await db.$queryRaw<Array<{ id: string; computedAt: Date; written: boolean }>>(Prisma.sql`
-      WITH written AS (
-        INSERT INTO reputation_scores (
-          anchor_id, composite_score, score_band, fill_rate_7d, fill_rate_30d,
-          fill_rate_90d, settle_p50_ms, settle_p95_ms, slippage_p50, slippage_p95,
-          sample_size, state, computed_at
-        ) VALUES (
-          ${input.anchorId}::uuid, ${data.compositeScore}, ${calculation.scoreBand?.toLowerCase() ?? null}::reputation_score_band,
-          ${data.fillRate7d}, ${data.fillRate30d}, ${data.fillRate90d},
-          ${data.settleP50Ms}, ${data.settleP95Ms}, ${data.slippageP50}, ${data.slippageP95},
-          ${data.sampleSize}, ${calculation.state === "established" ? "ok" : "insufficient_data"}::reputation_state,
-          ${data.computedAt}
-        )
-        ON CONFLICT (anchor_id) DO UPDATE SET
-          composite_score = EXCLUDED.composite_score,
-          score_band = EXCLUDED.score_band,
-          fill_rate_7d = EXCLUDED.fill_rate_7d,
-          fill_rate_30d = EXCLUDED.fill_rate_30d,
-          fill_rate_90d = EXCLUDED.fill_rate_90d,
-          settle_p50_ms = EXCLUDED.settle_p50_ms,
-          settle_p95_ms = EXCLUDED.settle_p95_ms,
-          slippage_p50 = EXCLUDED.slippage_p50,
-          slippage_p95 = EXCLUDED.slippage_p95,
-          sample_size = EXCLUDED.sample_size,
-          state = EXCLUDED.state,
-          computed_at = EXCLUDED.computed_at
-        WHERE reputation_scores.computed_at < EXCLUDED.computed_at
-        RETURNING id, computed_at AS "computedAt", true AS written
-      )
-      SELECT id, "computedAt", written FROM written
-      UNION ALL
-      SELECT id, computed_at AS "computedAt", false AS written
-      FROM reputation_scores
-      WHERE anchor_id = ${input.anchorId}::uuid
-        AND NOT EXISTS (SELECT 1 FROM written)
-    `);
-    const persisted = rows[0];
-    if (!persisted) throw new Error("Reputation score write returned no current row");
+    const persisted = await db.reputationScore.upsert({
+      where: { anchorId: input.anchorId },
+      create: { anchorId: input.anchorId, ...data },
+      update: data,
+      select: { id: true, computedAt: true, anchor: { select: { slug: true } } },
+    });
 
     return Object.freeze({
       id: persisted.id,
-      anchorSlug: calculation.anchorSlug,
+      anchorSlug: persisted.anchor.slug,
       computedAt: new Date(persisted.computedAt.getTime()),
-      writeStatus: persisted.written
-        ? "written"
-        : persisted.computedAt.getTime() === data.computedAt.getTime()
-          ? "rejected_tie"
-          : "rejected_stale",
     });
   },
 });

@@ -33,7 +33,12 @@ const REQUEST = Object.freeze({
 });
 
 function candidate(anchorSlug: string): RateCandidate {
-  return Object.freeze({ anchorSlug, corridor: CORRIDOR, request: REQUEST });
+  return Object.freeze({
+    anchorSlug,
+    corridor: CORRIDOR,
+    request: REQUEST,
+    configurationDigest: "c".repeat(64),
+  });
 }
 
 /** Structurally valid SEP-38 payloads that parse as JSON but miss required fields. */
@@ -86,14 +91,17 @@ function makeRepository() {
     findAnchorBySlug: async (slug) => ({ id: slug }),
     findCorridorBySlug: async (slug) => ({ id: slug }),
     hasAssociation: async () => true,
-    findProvenanceBySnapshotId: async () => null,
     createSnapshot: async (input) => {
       persisted.push(Object.freeze({
         anchorId: input.anchorId,
         corridorId: input.corridorId,
         rate: input.rate,
       }));
-      return { id: `snapshot-${persisted.length}`, ...input, provenanceUnavailable: false };
+      return {
+        id: `snapshot-${persisted.length}`,
+        provenanceId: `provenance-${persisted.length}`,
+        ...input,
+      };
     },
   };
   return Object.freeze({ repository, persisted });
@@ -126,7 +134,6 @@ test("incomplete upstream JSON blocks a candidate without persisting a rate snap
       })(candidate),
       repository,
       now: () => NOW,
-      configurationFingerprint: "test-configuration-fingerprint",
     },
   );
 
@@ -161,7 +168,6 @@ test("structurally parsed but field-incomplete quotes fail normalization, not pe
       quote: async () => incomplete as unknown as Sep38IndicativePrice,
       repository,
       now: () => NOW,
-      configurationFingerprint: "test-configuration-fingerprint",
     });
 
     assert.deepEqual(result.failures.map(({ phase, code }) => ({ phase, code })), [{
@@ -184,7 +190,6 @@ test("one invalid candidate never suppresses a valid sibling run", async () => {
       },
       repository,
       now: () => NOW,
-      configurationFingerprint: "test-configuration-fingerprint",
     },
   );
 

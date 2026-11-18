@@ -118,10 +118,7 @@ test("every current public GET route enforces the shared limiter", () => {
   for (const relative of routeFiles) {
     const source = readFileSync(new URL(relative, import.meta.url), "utf8");
     assert.match(source, /@\/lib\/api\/rateLimiter/);
-    // Routes resolve the correlation id first and pass it to the limiter so a
-    // rejected request can be matched to its log entry (#369).
-    assert.match(source, /resolveRequestId\(request\)/);
-    assert.match(source, /getRateLimiter\(\)\.check\(request, Date\.now\(\), requestId\)/);
+    assert.match(source, /getRateLimiter\(\)\.check\(request, Date\.now\(\)\)/);
   }
 
   const internalCron = readFileSync(

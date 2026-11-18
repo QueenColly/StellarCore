@@ -2,6 +2,7 @@ import { ANCHOR_REGISTRY } from "@/constants/anchors";
 import { CORRIDOR_REGISTRY } from "@/constants/corridors";
 import { REVIEWED_LIVE_RATE_SOURCES } from "@/constants/liveRateSources";
 import { parseDatabaseDecimal } from "@/lib/rates/decimal";
+import { computeRateSourceConfigurationFingerprint } from "@/lib/rates/sourceConfigurationFingerprint";
 import { discoverAnchor } from "@/lib/stellar/sep1";
 import {
   getSep38IndicativePrice,
@@ -61,6 +62,10 @@ export async function buildReviewedLiveRateCandidates(
       anchorSlug: source.anchorSlug,
       corridor,
       quoteServer,
+      // Computed from the reviewed source record itself, never from the
+      // discovered endpoint, so the digest captures exactly the reviewed
+      // configuration the candidate was selected from (#331, #113).
+      configurationDigest: computeRateSourceConfigurationFingerprint(source),
       request: Object.freeze({
         sellAsset: source.sellAsset,
         buyAsset: source.buyAsset,

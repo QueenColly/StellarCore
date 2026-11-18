@@ -1,4 +1,4 @@
-
+import type { RateSnapshotProvenanceInput } from "@/types/rateProvenance";
 import type {
   NormalizedRateObservation,
   PersistedRateSnapshot,
@@ -28,33 +28,23 @@ async function evidenceDb(): Promise<
   | Readonly<{ ok: false }>
 > {
   const environment = await assertRateSnapshotEnvironment();
-
-  if (!environment.ok) {
-    return Object.freeze({ ok: false });
-  }
-
+  if (!environment.ok) return Object.freeze({ ok: false });
   const { db } = await import("@/lib/dbClient");
   return Object.freeze({ ok: true, db });
 }
 
 export async function persistRateSnapshot(
   observation: NormalizedRateObservation,
+  provenance: RateSnapshotProvenanceInput,
   repository: RateSnapshotRepository = PRISMA_RATE_SNAPSHOT_REPOSITORY,
 ): Promise<RateSnapshotPersistenceResult> {
   try {
     const anchor = await repository.findAnchorBySlug(observation.anchorSlug);
     if (!anchor) return failure("ANCHOR_NOT_FOUND");
-
     const corridor = await repository.findCorridorBySlug(observation.corridorSlug);
     if (!corridor) return failure("CORRIDOR_NOT_FOUND");
-
     if (!(await repository.hasAssociation(anchor.id, corridor.id))) {
       return failure("ASSOCIATION_NOT_FOUND");
-    }
-
-    if (observation.captureRunId && repository.findRunById) {
-      const run = await repository.findRunById(observation.captureRunId);
-      if (!run) return failure("RUN_NOT_FOUND");
     }
 
     const row = await repository.createSnapshot({
@@ -65,12 +55,10 @@ export async function persistRateSnapshot(
       destinationAmount: observation.destinationAmount,
       fee: observation.fee,
       capturedAt: observation.capturedAt,
-      configurationFingerprint: observation.configurationFingerprint,
-      ...(observation.captureRunId
-        ? { captureRunId: observation.captureRunId }
-        : {}),
+      // Capture-time provenance (#113) is written in the same transaction as
+      // the snapshot row, so a snapshot can never exist without lineage.
+      provenance,
     });
-
     const snapshot: PersistedRateSnapshot = Object.freeze({
       id: row.id,
       anchorSlug: observation.anchorSlug,
@@ -80,15 +68,7 @@ export async function persistRateSnapshot(
       destinationAmount: row.destinationAmount.toString(),
       fee: row.fee.toString(),
       capturedAt: new Date(row.capturedAt.getTime()),
-      configurationFingerprint: row.configurationFingerprint ?? null,
-      provenanceUnavailable: row.provenanceUnavailable ?? false,
-      ...(row.captureRunId
-        ? { captureRunId: row.captureRunId }
-        : observation.captureRunId
-          ? { captureRunId: observation.captureRunId }
-          : {}),
     });
-
     return Object.freeze({ ok: true, snapshot });
   } catch (error) {
     // Environment isolation (#143): a guard rejection at the repository
@@ -98,77 +78,37 @@ export async function persistRateSnapshot(
     if (error instanceof EnvironmentIsolationRejection) {
       return failure("ENVIRONMENT_MISMATCH");
     }
-
     return failure("PERSISTENCE_FAILURE");
   }
 }
 
 export const PRISMA_RATE_SNAPSHOT_REPOSITORY: RateSnapshotRepository =
   Object.freeze({
-    async findAnchorBySlug(slug) {
-      const environment = await evidenceDb();
-      if (!environment.ok) throw new EnvironmentIsolationRejection();
-
-      return environment.db.anchor.findUnique({
-        where: { slug },
-        select: { id: true },
-      });
-    },
-
-    async findCorridorBySlug(slug) {
-      const environment = await evidenceDb();
-      if (!environment.ok) throw new EnvironmentIsolationRejection();
-
-      return environment.db.corridor.findUnique({
-        where: { slug },
-        select: { id: true },
-      });
-    },
-
-    async hasAssociation(anchorId, corridorId) {
-      const environment = await evidenceDb();
-      if (!environment.ok) throw new EnvironmentIsolationRejection();
-
-      return (
-        (await environment.db.anchorCorridor.findUnique({
-          where: { anchorId_corridorId: { anchorId, corridorId } },
-          select: { anchorId: true },
-        })) !== null
-      );
-    },
-
-    async findProvenanceBySnapshotId(id) {
-      const environment = await evidenceDb();
-      if (!environment.ok) throw new EnvironmentIsolationRejection();
-
-      const row = await environment.db.rateSnapshot.findUnique({
-        where: { id },
-        select: {
-          configurationFingerprint: true,
-          provenanceUnavailable: true,
-        },
-      });
-
-      if (!row) return null;
-
-      if (row.provenanceUnavailable || !row.configurationFingerprint) {
-        return Object.freeze({ available: false });
-      }
-
-      return Object.freeze({
-        available: true,
-        configurationFingerprint: row.configurationFingerprint,
-      });
-    },
-
-    async createSnapshot(input) {
-      const environment = await evidenceDb();
-      if (!environment.ok) throw new EnvironmentIsolationRejection();
-
-      const { captureRunId: _captureRunId, ...createData } = input;
-
-      return environment.db.rateSnapshot.create({
-        data: createData,
+  async findAnchorBySlug(slug) {
+    const environment = await evidenceDb();
+    if (!environment.ok) throw new EnvironmentIsolationRejection();
+    return environment.db.anchor.findUnique({ where: { slug }, select: { id: true } });
+  },
+  async findCorridorBySlug(slug) {
+    const environment = await evidenceDb();
+    if (!environment.ok) throw new EnvironmentIsolationRejection();
+    return environment.db.corridor.findUnique({ where: { slug }, select: { id: true } });
+  },
+  async hasAssociation(anchorId, corridorId) {
+    const environment = await evidenceDb();
+    if (!environment.ok) throw new EnvironmentIsolationRejection();
+    return (await environment.db.anchorCorridor.findUnique({
+      where: { anchorId_corridorId: { anchorId, corridorId } },
+      select: { anchorId: true },
+    })) !== null;
+  },
+  async createSnapshot(input) {
+    const environment = await evidenceDb();
+    if (!environment.ok) throw new EnvironmentIsolationRejection();
+    const { provenance, ...snapshotInput } = input;
+    return environment.db.$transaction(async (tx) => {
+      const snapshot = await tx.rateSnapshot.create({
+        data: snapshotInput,
         select: {
           id: true,
           rate: true,
@@ -176,12 +116,25 @@ export const PRISMA_RATE_SNAPSHOT_REPOSITORY: RateSnapshotRepository =
           destinationAmount: true,
           fee: true,
           capturedAt: true,
-          configurationFingerprint: true,
-          provenanceUnavailable: true,
         },
       });
-    },
-  });
+      const provenanceRow = await tx.rateSnapshotProvenance.create({
+        data: {
+          snapshotId: snapshot.id,
+          captureRunId: provenance.captureRunId,
+          sourceType: provenance.sourceType,
+          anchorSlug: provenance.anchorSlug,
+          corridorSlug: provenance.corridorSlug,
+          configurationDigest: provenance.configurationDigest,
+          requestShapeVersion: provenance.requestShapeVersion,
+          capturedAt: provenance.capturedAt,
+        },
+        select: { id: true },
+      });
+      return { ...snapshot, provenanceId: provenanceRow.id };
+    });
+  },
+});
 
 /** Sentinel distinguishing guard rejections from ordinary persistence errors. */
 export class EnvironmentIsolationRejection extends Error {

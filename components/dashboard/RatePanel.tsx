@@ -1,11 +1,15 @@
 
-import * as React from "react";
-import { getRatesApiResult, type RatesApiDependencies } from "@/lib/api/rates";
-import { createRequestId } from "@/lib/api/requestId";
-import type { RateFreshnessState } from "@/types/rates";
+import {
+  getRatesApiResult,
+  type RatesApiDependencies,
+} from "@/lib/api/rates";
 import type { RatesApiResult } from "@/types/api/rates";
+import type { RateFreshnessState } from "@/types/rates";
 import { Badge } from "@/components/dashboard/Badge";
-import { SectionEmpty, SectionError } from "@/components/dashboard/SectionStates";
+import {
+  SectionEmpty,
+  SectionError,
+} from "@/components/dashboard/SectionStates";
 import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
 
 const FEATURED_CORRIDOR_SLUG = "usdc-us-brl-br";
@@ -13,12 +17,6 @@ const FEATURED_CORRIDOR_SLUG = "usdc-us-brl-br";
 function isValidEvidenceTime(value: string): boolean {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
-}
-
-function describeSnapshotAge(ageMs: number): string {
-  if (!Number.isFinite(ageMs) || ageMs < 0) return "an unknown age";
-  const seconds = Math.round(ageMs / 1_000);
-  return `${seconds} second${seconds === 1 ? "" : "s"}`;
 }
 
 function freshnessTone(state: RateFreshnessState) {
@@ -33,33 +31,25 @@ function freshnessTone(state: RateFreshnessState) {
   }
 }
 
-export async function RatePanel(props?: {
+export async function RatePanel({
+  dependencies,
+}: {
   dependencies?: RatesApiDependencies;
-  result?: RatesApiResult;
-}) {
-  // Assign the correlation id here so the reference shown on failure is exactly
-  // the id in the matching structured server log entry.
-  const result = props?.result ?? await getRatesApiResult(FEATURED_CORRIDOR_SLUG, {
-    ...(props?.dependencies ?? {}),
-    requestId: createRequestId(),
-  });
+} = {}) {
+  const result = await getRatesApiResult(
+    FEATURED_CORRIDOR_SLUG,
+    dependencies,
+  );
 
   return <RatePanelView result={result} />;
 }
 
-/** Keeps the rendered freshness tied to persisted evidence in the response. */
-export function RatePanelView({ result }: { result: RatesApiResult }) {
+/** Pure render of a rates API result; contract-tested against canonical fixtures. */
+export function RatePanelView({
+  result,
+}: Readonly<{ result: RatesApiResult }>) {
   if (result.status !== 200) {
-    const { code, message, requestId } = result.body.error;
-
-    return (
-      <SectionError
-        area="rates"
-        code={code}
-        message={message}
-        requestId={requestId}
-      />
-    );
+    return <SectionError message={result.body.error.message} />;
   }
 
   const {
@@ -75,9 +65,13 @@ export function RatePanelView({ result }: { result: RatesApiResult }) {
   } = result.body;
 
   const candidateLabel = `${reviewedCandidateConfiguration.candidateCount} configured ${
-    reviewedCandidateConfiguration.candidateCount === 1 ? "candidate" : "candidates"
+    reviewedCandidateConfiguration.candidateCount === 1
+      ? "candidate"
+      : "candidates"
   } across ${reviewedCandidateConfiguration.uniqueAnchorCount} ${
-    reviewedCandidateConfiguration.uniqueAnchorCount === 1 ? "anchor" : "anchors"
+    reviewedCandidateConfiguration.uniqueAnchorCount === 1
+      ? "anchor"
+      : "anchors"
   }`;
 
   const observationLabel = `${sourceCount} latest persisted anchor ${
@@ -116,7 +110,7 @@ export function RatePanelView({ result }: { result: RatesApiResult }) {
           >
             {latestCapturedAt
               ? `Latest observation captured ${new Date(
-                  latestCapturedAt
+                  latestCapturedAt,
                 ).toLocaleString()}`
               : "Freshness unavailable — no valid observation time"}
           </p>
@@ -128,18 +122,6 @@ export function RatePanelView({ result }: { result: RatesApiResult }) {
         />
       </div>
 
-      {result.degraded ? (
-        <p
-          role="status"
-          data-testid="rate-evidence-degraded"
-          className="mt-4 rounded-lg border border-[rgba(243,184,100,0.4)] bg-[rgba(243,184,100,0.08)] p-3 text-xs leading-relaxed text-[#f3b864]"
-        >
-          Stale evidence — the latest read failed, so this panel is showing the last verified
-          response generated {new Date(result.degraded.generatedAt).toLocaleString()} (
-          {describeSnapshotAge(result.degraded.snapshotAgeMs)} old). It is not a fresh observation.
-        </p>
-      ) : null}
-
       <dl className="mt-6 grid grid-cols-1 gap-4 border-t border-[var(--ghost)] pt-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
         <div>
           <dt className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -150,7 +132,7 @@ export function RatePanelView({ result }: { result: RatesApiResult }) {
             className={
               medianRate === null
                 ? "mt-1 text-lg text-[var(--white)]"
-                : "mt-1 text-2xl text-[var(--white)]"
+                : "mt-1 text-2xl text-[var(--white)] break-words"
             }
             style={{ fontFamily: "var(--display)" }}
           >
@@ -245,11 +227,11 @@ export function RatePanelView({ result }: { result: RatesApiResult }) {
                       : observation.anchor.slug}
                   </td>
 
-                  <td className="px-3 py-2 text-[var(--white)]">
+                  <td className="break-all px-3 py-2 text-[var(--white)]">
                     {observation.rate}
                   </td>
 
-                  <td className="px-3 py-2 text-[var(--muted)]">
+                  <td className="break-all px-3 py-2 text-[var(--muted)]">
                     {observation.fee}
                   </td>
 
@@ -271,7 +253,7 @@ export function RatePanelView({ result }: { result: RatesApiResult }) {
                           observation.exclusionReason
                             ? ` — ${observation.exclusionReason.replace(
                                 /_/g,
-                                " "
+                                " ",
                               )}`
                             : ""
                         }`}

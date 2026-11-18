@@ -50,6 +50,7 @@ export type PublicRatesResponse = Readonly<{
 export type RatesApiErrorCode =
   | "missing_corridor"
   | "invalid_corridor"
+  | "invalid_query"
   | "corridor_not_found"
   | "internal_error";
 
@@ -57,8 +58,6 @@ export type RatesApiErrorResponse = Readonly<{
   error: Readonly<{
     code: RatesApiErrorCode;
     message: string;
-    /** Optional, additive request-correlation id (see `lib/api/requestId.ts`). */
-    requestId?: string;
   }>;
 }>;
 

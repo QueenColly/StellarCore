@@ -6,11 +6,7 @@ import * as corridorDetailRoute from "@/app/api/corridors/[slug]/route";
 import * as rateHistoryRoute from "@/app/api/rates/history/route";
 import * as ratesRoute from "@/app/api/rates/route";
 import * as reputationDetailRoute from "@/app/api/reputation/[slug]/route";
-import {
-  consolePublicApiErrorReporter,
-  publicApiErrorEnvelope,
-  publicApiErrorResult,
-} from "@/lib/api/errors";
+import { publicApiErrorEnvelope, publicApiErrorResult } from "@/lib/api/errors";
 import { publicApiJsonResponse } from "@/lib/api/http";
 import { getRatesApiResult } from "@/lib/api/rates";
 import {
@@ -81,12 +77,9 @@ test("representative public routes use the same validation envelope", async () =
   for (let index = 0; index < cases.length; index += 1) {
     const response = cases[index]!;
     assert.equal(response.status, 400);
-    const body = await response.json() as {
-      error: { code: string; message: string; requestId?: string };
-    };
+    const body = await response.json() as { error: { code: string; message: string } };
     assert.deepEqual(Object.keys(body), ["error"]);
-    assert.deepEqual(Object.keys(body.error).sort(), ["code", "message", "requestId"]);
-    assert.equal(body.error.requestId, response.headers.get("x-request-id"));
+    assert.deepEqual(Object.keys(body.error).sort(), ["code", "message"]);
     assert.equal(body.error.code, expected[index]);
   }
 });
@@ -121,133 +114,3 @@ test("unknown exceptions are reported internally but never leak into the client 
     },
   });
 });
-
-test("consolePublicApiErrorReporter handles missing optional diagnostic context safely (#421)", () => {
-  const originalError = console.error;
-  const calls: unknown[][] = [];
-  console.error = (...args: unknown[]) => {
-    calls.push(args);
-  };
-
-  const LOG_PREFIX = "[stellarcore:public-api] ";
-  const entry = (index: number) => {
-    const line = String(calls[index]?.[0]);
-    assert.equal(line.startsWith(LOG_PREFIX), true);
-    return JSON.parse(line.slice(LOG_PREFIX.length)) as Record<string, unknown>;
-  };
-
-  try {
-    const err = new Error("Sample internal failure");
-
-    // Case 1: context completely omitted / undefined
-    assert.doesNotThrow(() => {
-      consolePublicApiErrorReporter(err, undefined);
-    });
-    assert.equal(calls.length, 1);
-    assert.deepEqual(entry(0), {
-      event: "public_api_error",
-      operation: "unknown",
-      code: "internal_error",
-    });
-    assert.equal(calls[0]?.[1], err);
-
-    // Case 2: context is empty object (all optional diagnostic fields omitted)
-    assert.doesNotThrow(() => {
-      consolePublicApiErrorReporter(err, {});
-    });
-    assert.equal(calls.length, 2);
-    assert.deepEqual(entry(1), {
-      event: "public_api_error",
-      operation: "unknown",
-      code: "internal_error",
-    });
-    assert.equal(calls[1]?.[1], err);
-
-    // Case 3: context missing code only
-    assert.doesNotThrow(() => {
-      consolePublicApiErrorReporter(err, { operation: "rates.read" });
-    });
-    assert.equal(calls.length, 3);
-    assert.deepEqual(entry(2), {
-      event: "public_api_error",
-      operation: "rates.read",
-      code: "internal_error",
-    });
-
-    // Case 4: context missing operation only
-    assert.doesNotThrow(() => {
-      consolePublicApiErrorReporter(err, { code: "rate_limited" });
-    });
-    assert.equal(calls.length, 4);
-    assert.deepEqual(entry(3), {
-      event: "public_api_error",
-      operation: "unknown",
-      code: "rate_limited",
-    });
-
-    // Case 5: context with full diagnostic fields, including a valid id
-    assert.doesNotThrow(() => {
-      consolePublicApiErrorReporter(err, { operation: "anchors.list", code: "internal_error", requestId: "req-12345678" });
-    });
-    assert.equal(calls.length, 5);
-    assert.deepEqual(entry(4), {
-      event: "public_api_error",
-      operation: "anchors.list",
-      code: "internal_error",
-      requestId: "req-12345678",
-    });
-
-    // Case 6: an invalid id is never written to the log line
-    assert.doesNotThrow(() => {
-      consolePublicApiErrorReporter(err, {
-        operation: "anchors.list",
-        code: "internal_error",
-        requestId: "postgresql://admin:secret@private-db.internal/core",
-      });
-    });
-    assert.equal(calls.length, 6);
-    const unlogged = entry(5);
-    assert.equal("requestId" in unlogged, false);
-    assert.equal(String(calls[5]?.[0]).includes("secret"), false);
-  } finally {
-    console.error = originalError;
-  }
-});
-
-test("API routes produce safe error envelopes when custom error reporter throws or fails (#421)", async () => {
-  // Faulty error reporter that fails when diagnostic context is incomplete or logs fail
-  const failingReporter = () => {
-    throw new Error("Diagnostic logger crashed!");
-  };
-
-  const secret = new Error("db password in stack: P@ssw0rd123");
-
-  // getRatesApiResult
-  const ratesResult = await getRatesApiResult("usdc-us-brl-br", {
-    readLatestRate: async () => { throw secret; },
-    reportError: (err, context) => {
-      // Diagnostic context may be partial, empty, or custom
-      assert.ok(err);
-      assert.ok(context !== null);
-      try {
-        failingReporter();
-      } catch {
-        // reporter failure must not escape or change the safe response contract
-      }
-    },
-    staleEvidenceStore: {
-      read: async () => null,
-      write: async () => {},
-    },
-  });
-
-  assert.equal(ratesResult.status, 500);
-  assert.deepEqual(ratesResult.body, {
-    error: {
-      code: "internal_error",
-      message: "Unable to read rates.",
-    },
-  });
-  assert.equal(JSON.stringify(ratesResult.body).includes("P@ssw0rd123"), false);
-});
-

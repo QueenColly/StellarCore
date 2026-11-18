@@ -323,9 +323,11 @@ test("rotation errors and boundary responses never surface secret values", async
 function successfulRun() {
   return Object.freeze({
     ok: true,
+    runId: "test-run-id",
     startedAt: "2026-09-15T00:00:00.000Z",
     completedAt: "2026-09-15T00:00:01.000Z",
-    rates: Object.freeze({ attempted: 1, succeeded: 1, failed: 0, skipped: 0, failures: [], skippedSources: [] }),
+    attempt: 1,
+    rates: Object.freeze({ attempted: 1, succeeded: 1, failed: 0, skipped: 0, failures: [] }),
     reputation: Object.freeze({ attempted: 3, succeeded: 3, failed: 0, failures: [] }),
   });
 }

@@ -34,15 +34,6 @@ type PrismaLatestRateRow = Readonly<{
  *
  * Exported so the differential tests and the benchmark run the exact text that
  * production runs.
- *
- * Raw SQL boundary for latest-observation reads.
- *
- * Safety notes:
- * - The corridor UUID is passed as a Prisma parameter (${corridorId}), not interpolated
- *   into the SQL text.
- * - All table and column names are constant literals in this file. If a future performance
- *   change needs a dynamic identifier, use `resolveRawIdentifier` from
- *   `../db/rawSqlGuardrails``, which enforces the approved allowlist.
  */
 export function latestObservationsQuery(corridorId: string): Prisma.Sql {
   return Prisma.sql`
@@ -73,12 +64,20 @@ export function latestObservationsQuery(corridorId: string): Prisma.Sql {
     ORDER BY anchor.id
   `;
 }
+
 export const PRISMA_LATEST_RATE_REPOSITORY: LatestRateRepository = Object.freeze({
   async findCorridorBySlug(slug) {
     const { db } = await import("@/lib/dbClient");
     return db.corridor.findUnique({
       where: { slug },
-      select: {id: true, slug: true, assetCodeFrom: true, countryFrom: true, assetCodeTo: true, countryTo: true},
+      select: {
+        id: true,
+        slug: true,
+        assetCodeFrom: true,
+        countryFrom: true,
+        assetCodeTo: true,
+        countryTo: true,
+      },
     });
   },
 

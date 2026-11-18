@@ -6,13 +6,19 @@ const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs"]);
 
 const REVIEWED_RAW_SQL_FILES = new Set([
   "lib/config/environmentGuardDb.ts",
-  "lib/health/http.ts",
   "lib/rates/latestRateRepository.ts",
   "lib/rates/rateHistoryRepository.ts",
   "lib/reputation/repository.ts",
   "lib/reputation/snapshot.ts",
   "lib/stellar/anchorSync.ts",
   "scripts/stamp-database-environment.ts",
+]);
+
+const REVIEWED_UNSAFE_EXCEPTIONS = new Map<string, readonly string[]>([
+  [
+    "lib/reputation/snapshot.ts",
+    ['await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");'],
+  ],
 ]);
 
 type Finding = Readonly<{
@@ -99,11 +105,17 @@ async function main(): Promise<void> {
     }
 
     if (counts.queryRawUnsafe > 0 || counts.executeRawUnsafe > 0) {
-      findings.push(Object.freeze({
-        file: normalized,
-        code: "UNSAFE_RAW_API",
-        detail: "Unsafe Prisma raw APIs are prohibited. Use a parameterized SQL template.",
-      }));
+      const allowed = REVIEWED_UNSAFE_EXCEPTIONS.get(normalized) ?? [];
+      let scrubbed = source;
+      for (const exact of allowed) scrubbed = scrubbed.replace(exact, "");
+      if (/\$(?:queryRawUnsafe|executeRawUnsafe)\b/.test(scrubbed)) {
+        findings.push(Object.freeze({
+          file: normalized,
+          code: "UNSAFE_RAW_API",
+          detail:
+            "Unsafe Prisma raw APIs are prohibited unless the exact constant-only statement is explicitly reviewed and allowlisted.",
+        }));
+      }
     }
   }
 

@@ -61,4 +61,35 @@ describe("ExactDecimal math operations", () => {
     assert.equal(formatDecimal(maxDecimal(a, b)), "3.141");
     assert.equal(formatDecimal(maxDecimal(b, a)), "3.141");
   });
+
+  test("formatDecimal preserves small nonzero rates without rounding to zero", () => {
+    const small = parseDatabaseDecimal("0.00001234");
+    assert.equal(formatDecimal(small), "0.00001234");
+    assert.notEqual(formatDecimal(small), "0");
+
+    const micro = parseDatabaseDecimal("0.000000000000000001");
+    assert.equal(formatDecimal(micro), "0.000000000000000001");
+  });
+
+  test("formatDecimal formats large rates up to Decimal(38,18) boundary", () => {
+    const large = parseDatabaseDecimal("999999999999.99");
+    assert.equal(formatDecimal(large), "999999999999.99");
+
+    const maxDigits = "99999999999999999999.999999999999999999";
+    const extreme = parseDatabaseDecimal(maxDigits);
+    assert.equal(formatDecimal(extreme), maxDigits);
+  });
+
+  test("formatDecimal does not mutate the underlying ExactDecimal", () => {
+    const decimal = parseDatabaseDecimal("0.00001234");
+    const coefficient = decimal.coefficient;
+    const scale = decimal.scale;
+
+    const formatted = formatDecimal(decimal);
+    assert.equal(formatted, "0.00001234");
+    assert.equal(decimal.coefficient, coefficient);
+    assert.equal(decimal.scale, scale);
+    assert.equal(Object.isFrozen(decimal), true);
+  });
 });
+

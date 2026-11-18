@@ -31,15 +31,14 @@ export type RatesApiDependencies = Readonly<{
   now?: () => Date;
   staleEvidenceStore?: StaleEvidenceStore;
   reportError?: PublicApiErrorReporter;
-  /** Correlation id published with failures and recorded in the failure log. */
-  requestId?: string;
+  signal?: AbortSignal;
 }>;
 
 export async function getRatesApiResult(
-  corridorParameter: string | null,
+  corridorParameter: string | readonly string[] | null,
   dependencies: RatesApiDependencies = {},
 ): Promise<RatesApiResult> {
-  const validation = validateCorridorParameter(corridorParameter, dependencies.requestId);
+  const validation = validateCorridorParameter(corridorParameter);
   if (!validation.ok) return validation.result;
 
   const evaluatedAt = dependencies.now?.() ?? new Date();
@@ -51,6 +50,9 @@ export async function getRatesApiResult(
   try {
     result = await read(validation.corridorSlug, { evaluatedAt });
   } catch (error) {
+    if (dependencies.signal?.aborted) {
+      throw dependencies.signal.reason ?? new Error("The operation was aborted");
+    }
     if (isTransientDatabaseFailure(error)) {
       const stale = await restoreStaleEvidence(store, snapshotKey, evaluatedAt);
       if (stale) {
@@ -62,20 +64,16 @@ export async function getRatesApiResult(
       }
     }
     reportError(dependencies, error, "rates.read");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to read rates.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to read rates.");
+  }
+
+  if (dependencies.signal?.aborted) {
+    throw dependencies.signal.reason ?? new Error("The operation was aborted");
   }
 
   if (!result.ok) {
     if (result.code === "CORRIDOR_NOT_FOUND") {
-      return publicApiErrorResult(
-        "corridor_not_found",
-        "Corridor not found.",
-        dependencies.requestId,
-      );
+      return publicApiErrorResult("corridor_not_found", "Corridor not found.");
     }
     if (result.code === "DATABASE_UNAVAILABLE") {
       const stale = await restoreStaleEvidence(store, snapshotKey, evaluatedAt);
@@ -87,15 +85,7 @@ export async function getRatesApiResult(
         });
       }
     }
-    // A read-model failure that has no stale snapshot used to become a silent
-    // 500. Report it with the published correlation id so the id a user quotes
-    // always has a matching log entry.
-    reportError(dependencies, result, "rates.read_model");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to read rates.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to read rates.");
   }
 
   try {
@@ -107,11 +97,7 @@ export async function getRatesApiResult(
     return Object.freeze({ status: 200, body });
   } catch (error) {
     reportError(dependencies, error, "rates.serialize");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to read rates.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to read rates.");
   }
 }
 
@@ -169,19 +155,21 @@ export function serializeRates(result: LatestCorridorRate): PublicRatesResponse 
 }
 
 function validateCorridorParameter(
-  value: string | null,
-  requestId?: string,
+  value: string | readonly string[] | null,
 ):
   | Readonly<{ ok: true; corridorSlug: string }>
   | Readonly<{ ok: false; result: RatesApiResult }> {
   if (value === null || value === "") {
     return Object.freeze({
       ok: false,
-      result: publicApiErrorResult(
-        "missing_corridor",
-        "A corridor slug is required.",
-        requestId,
-      ),
+      result: publicApiErrorResult("missing_corridor", "A corridor slug is required."),
+    });
+  }
+
+  if (typeof value !== "string") {
+    return Object.freeze({
+      ok: false,
+      result: publicApiErrorResult("invalid_corridor", "The corridor slug is invalid."),
     });
   }
 
@@ -191,11 +179,7 @@ function validateCorridorParameter(
   ) {
     return Object.freeze({
       ok: false,
-      result: publicApiErrorResult(
-        "invalid_corridor",
-        "The corridor slug is invalid.",
-        requestId,
-      ),
+      result: publicApiErrorResult("invalid_corridor", "The corridor slug is invalid."),
     });
   }
 
@@ -210,6 +194,5 @@ function reportError(
   (dependencies.reportError ?? consolePublicApiErrorReporter)(error, {
     operation,
     code: "internal_error",
-    requestId: dependencies.requestId,
   });
 }

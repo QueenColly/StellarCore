@@ -6,8 +6,6 @@ on:
       - "constants/**"
       - "lib/config/**"
       - "lib/stellar/**"
-      - "vercel.json"
-      - "tests/unit/config/cronCadence.test.ts"
       - "scripts/audit-configuration.ts"
       - "package.json"
       - "package-lock.json"

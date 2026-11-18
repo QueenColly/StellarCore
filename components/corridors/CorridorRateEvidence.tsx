@@ -1,5 +1,4 @@
 import type { PublicRatesResponse } from "@/types/api/rates";
-import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
 
 type Props = Readonly<{ rates: PublicRatesResponse }>;
 
@@ -29,7 +28,7 @@ export function CorridorRateEvidence({ rates }: Props) {
         <dl className="grid gap-5 sm:grid-cols-3">
           <div>
             <dt className="text-xs uppercase tracking-wide text-[var(--muted)]">Median rate</dt>
-            <dd className="mt-1 text-2xl text-[var(--white)]" style={{ fontFamily: "var(--display)" }}>
+            <dd className="mt-1 text-2xl text-[var(--white)] break-words" style={{ fontFamily: "var(--display)" }}>
               {rates.medianRate ?? "Median unavailable"}
             </dd>
           </div>
@@ -41,7 +40,7 @@ export function CorridorRateEvidence({ rates }: Props) {
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-[var(--muted)]">Evaluated</dt>
-            <dd className="mt-1 text-[var(--muted)]"><EvidenceTimestamp value={rates.evaluatedAt} /></dd>
+            <dd className="mt-1 text-[var(--muted)]">{new Date(rates.evaluatedAt).toLocaleString()}</dd>
           </div>
         </dl>
 
@@ -82,12 +81,10 @@ export function CorridorRateEvidence({ rates }: Props) {
               <tbody>
                 {rates.observations.map((observation) => (
                   <tr key={observation.anchor.slug} className="border-t border-[var(--ghost)] align-top">
-                    <td className="px-3 py-3 text-[var(--white)]">
-                      {observation.anchor.name?.trim() ? observation.anchor.name : observation.anchor.slug}
-                    </td>
-                    <td className="px-3 py-3 text-[var(--white)]">{observation.rate}</td>
+                    <td className="px-3 py-3 text-[var(--white)]">{observation.anchor.name}</td>
+                    <td className="px-3 py-3 text-[var(--white)] break-all">{observation.rate}</td>
                     <td className="px-3 py-3 text-[var(--muted)]">
-                      <EvidenceTimestamp value={observation.capturedAt} />
+                      {new Date(observation.capturedAt).toLocaleString()}
                     </td>
                     <td className="px-3 py-3 text-[var(--muted)]">{observation.freshness.state}</td>
                     <td className="px-3 py-3 text-[var(--muted)]">

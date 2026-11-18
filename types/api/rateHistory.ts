@@ -46,8 +46,6 @@ export type RateHistoryApiErrorResponse = Readonly<{
   error: Readonly<{
     code: RateHistoryApiErrorCode;
     message: string;
-    /** Optional, additive request-correlation id (see `lib/api/requestId.ts`). */
-    requestId?: string;
   }>;
 }>;
 

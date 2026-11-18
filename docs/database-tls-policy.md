@@ -19,16 +19,14 @@ make driver-default transport unsafe for production evidence traffic:
    that takes precedence over anything supplied in the Pool configuration —
    a bypass could be smuggled in through the URL.
 3. **Downgrade semantics.** `sslmode=require` and `sslmode=verify-ca` resolve
-   to unverified transport (`rejectUnauthorized: false`) when interpreted by
-   the driver alone, and `ssl=no-verify`/`sslmode=no-verify` do so explicitly.
+   to unverified transport (`rejectUnauthorized: false`) in the vendored
+   driver, and `ssl=no-verify`/`sslmode=no-verify` do so explicitly.
 
 StellarCore therefore classifies the URL and environment itself, strips all
 TLS parameters from the connection string handed to the driver, and passes an
 explicit ssl object — `rejectUnauthorized: true`, plus a CA when configured —
 directly in the Pool config. The application, not the URL, has the last word
-on transport security. This means managed-provider URLs using
-`sslmode=require` or `sslmode=verify-ca` can be safely upgraded to verified
-TLS, because those parameters are removed before the driver sees the URL.
+on transport security.
 
 ## Policy
 
@@ -42,45 +40,10 @@ TLS, because those parameters are removed before the driver sees the URL.
 | Production | `PGSSLMODE` variants | Same as the equivalent URL posture |
 | Development / test | Any posture | ✅ Honored as requested (plaintext stays usable locally) |
 
-### Conflicting settings and precedence
-
-When the same deployment declares TLS in more than one place, the policy
-resolves it deterministically:
-
-1. **Within `DATABASE_URL`, the weakest declaration wins.** If the URL carries
-   several TLS declarations (`sslmode` and `ssl`, or a repeated `sslmode`), the
-   most permissive one decides, ranked plaintext < verification bypass <
-   unrecognised value < `require`-class < verified. Parameter order never
-   matters, and a bypass cannot hide behind a stronger parameter:
-   `sslmode=require&ssl=no-verify` is rejected as a verification bypass and
-   `sslmode=verify-full&ssl=0` as plaintext. The rejection names the parameter
-   that decided. Values are compared case-insensitively after trimming.
-2. **The URL wins over the `PG*` environment.** As in libpq, any TLS parameter
-   in the URL overrides `PGSSLMODE`/`PGSSLROOTCERT`/`PGSSLCERT`/`PGSSLKEY`;
-   those are consulted only when the URL has no TLS parameters. Because the
-   policy always hands `pg` an explicit ssl object, the driver itself never
-   reads them in production.
-3. **URL certificate parameters are not a CA source.** `sslrootcert`, `sslcert`
-   and `sslkey` are stripped with the other TLS parameters and never become the
-   ssl config's CA; configure the CA via `STELLARCORE_DB_CA` or
-   `STELLARCORE_DB_CA_PATH`.
-4. **Inline CA wins over the CA path, but a broken path still fails.**
-   `STELLARCORE_DB_CA` is used when both are set; a configured
-   `STELLARCORE_DB_CA_PATH` that cannot be read rejects production startup
-   (`PRODUCTION_TLS_CA_MISSING`) even when an inline CA is present, so a
-   misconfiguration is surfaced rather than masked. A whitespace-only inline CA
-   counts as unset.
-5. **The emergency gate never weakens a verified URL.** It only relaxes a URL
-   whose resolved posture is a verification bypass; a plain or verified URL
-   stays `rejectUnauthorized: true`, plaintext stays rejected, and the gate is
-   inert outside production.
-
-These rules are covered by `tests/unit/database/tlsPolicyConflicts.test.ts`.
-
 Rejection diagnostics are safe: they name the policy code
 (`PRODUCTION_TLS_DISABLED`, `PRODUCTION_TLS_VERIFICATION_BYPASS`) and quote no
 URL, credential, or certificate material. This is enforced by unit tests that
-serialize rejections and assert credential and hostname absence.
+serialize every rejection and assert credential and hostname absence.
 
 ## CA configuration (provider-compatible, no committed secrets)
 
@@ -135,7 +98,7 @@ hard rejection in production (covered by tests).
 
 | Variable | Purpose | Safety notes |
 |---|---|---|
-| `DATABASE_URL` | PostgreSQL connection. TLS URL parameters are sanitized before connecting; policy owns transport. | Never committed; never logged. |
+| `DATABASE_URL` | PostgreSQL connection. Keep it free of TLS parameters; policy owns transport. | Never committed; never logged. |
 | `STELLARCORE_DB_CA_PATH` | File path to the provider CA PEM when the server does not chain to public roots. | Path only; the certificate is loaded into the ssl config at runtime and never logged. |
 | `STELLARCORE_DB_CA` | Inline provider CA PEM (fallback when no path is configured). | Certificate material; never committed, never logged. |
 | `STELLARCORE_DB_TLS_EMERGENCY_BYPASS` | Gated verification bypass; must equal exactly `allow-unverified` to activate. | Inert by default; activation prints a process warning; never enables plaintext. |
@@ -153,7 +116,8 @@ adapter and passes:
   `sslcert`, `sslkey`, `sslnegotiation`, `uselibpqcompat` parameters removed;
   all other parameters preserved).
 - `ssl`: the policy-resolved object (`rejectUnauthorized: true` plus optional
-  `ca`), which the driver applies because the URL contributes no TLS fields.
+  `ca`), which the driver applies verbatim because the URL contributes no TLS
+  fields.
 
 A policy rejection throws before the adapter is constructed, so production
 startup fails fast with the safe diagnostic.

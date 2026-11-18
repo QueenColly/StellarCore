@@ -1,4 +1,3 @@
-
 # PostgreSQL Failover and Reconnection Behavior
 
 This document defines how StellarCore handles transient PostgreSQL primary outages, provider-managed failovers, and connection endpoint rotations.
@@ -18,6 +17,8 @@ StellarCore connects to PostgreSQL using `@prisma/adapter-pg` backed by a harden
 
 ## Degraded Behavior During the Failover Window
 
+When a failover or transient outage occurs, the system exhibits the following deterministic behaviors:
+
 | Component | State During Failover Window | Behavior on Primary Restoration |
 |---|---|---|
 | **In-flight Queries** | Fail immediately with `isFailoverOrConnectionError` (`ECONNRESET`, `57P01`, `08006`). | Next query acquires a fresh connection to the new primary. |
@@ -30,18 +31,16 @@ StellarCore connects to PostgreSQL using `@prisma/adapter-pg` backed by a harden
 
 ## Error Classification Matrix
 
-StellarCore strictly distinguishes connection/failover failures from normal query errors.
+StellarCore strictly distinguishes connection/failover failures from normal query errors:
 
 ### Failover & Connection Errors (Trigger Pool Eviction)
-
 - **Node Network Errors**: `ECONNRESET`, `ECONNREFUSED`, `ETIMEDOUT`, `EPIPE`, `EHOSTUNREACH`, `ENETUNREACH`, `EAI_AGAIN`.
 - **PostgreSQL Class 08 (Connection Exception)**: `08000`, `08001`, `08003`, `08004`, `08006`.
-- **PostgreSQL Class 57P (Operator Intervention)**: `57P01` (`admin_shutdown`), `57P02` (`crash_shutdown`), `57P03` (`cannot_connect_now`).
+- **PostgreSQL Class 57P (Operator Intervention)**: `57P01` (admin_shutdown), `57P02` (crash_shutdown), `57P03` (cannot_connect_now).
 - **Standby Demotion**: `25006` (`read_only_sql_transaction` when writing to a demoted node).
 - **Ambiguous Commit**: `08007` (`transaction_resolution_unknown`).
 
 ### Normal Query Errors (Preserve Healthy Connections)
-
 - **Class 23 (Integrity Constraints)**: `23505` (unique), `23503` (foreign key), `23502` (not null).
 - **Class 42 (Syntax & Schema)**: `42P01` (table not found), `42703` (column not found), `42601` (syntax error).
 - **Class 22 (Data Exceptions)**: `22000`, `22P02`.
@@ -51,7 +50,7 @@ StellarCore strictly distinguishes connection/failover failures from normal quer
 
 ## Pool Configuration & Tuning
 
-The pool is configured in `lib/db/poolManager.ts` with environment variable overrides.
+The pool is configured in `lib/db/poolManager.ts` with environment variable overrides:
 
 | Parameter | Environment Variable | Default | Purpose |
 |---|---|---|---|
@@ -66,22 +65,8 @@ The pool is configured in `lib/db/poolManager.ts` with environment variable over
 ## Testing & Verification
 
 Isolated integration tests in `tests/integration/db/postgresFailover.integration.test.ts` verify:
-
 1. Stale pooled connection eviction after abrupt socket termination.
 2. Multi-request recovery after server outage and endpoint switch.
 3. Commit unconfirmed safety for transactions interrupted mid-commit.
 4. Deadline enforcement during network blackholes.
 5. Connection storm prevention under burst concurrency.
-6. Reconnect behavior after transient failover: a broken established connection fails within bounded time, recovery succeeds, and the application avoids indefinite reuse without touching production (#350).
-
-### Stale Pooled Connection Integration Tests
-
-`tests/integration/db/stalePooledConnection.integration.test.ts` covers the case where the server stays up but connections that were already pooled go bad (NAT/proxy idle timeout, `pg_terminate_backend`, `idle_session_timeout`).
-
-1. A pooled connection that fails on first use is destroyed rather than returned to the idle list, and the next query opens a healthy one.
-2. Without eviction, a second stale idle connection fails the next request too; `handleConnectionError` (wired as PrismaPg's `onConnectionError`) evicts the remaining idle connections so only one request fails, and reconnects stay within `DB_POOL_MAX`.
-3. Ordinary query errors (e.g. `23505`) keep healthy idle connections.
-4. An idle connection terminated by the server with `57P01` is removed via the pool `error` event without crashing the process.
-5. A statement or transaction that hits a stale connection is attempted exactly once: neither `pg` nor the pool manager replays it, and an interrupted transaction surfaces `TransactionInterruptedError`. Retrying is always the caller's explicit decision.
-
-All of these run against the in-process wire-protocol double in `tests/integration/db/fixtures/mockPostgresServer.ts`; no real database outage is needed.

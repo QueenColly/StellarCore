@@ -15,15 +15,14 @@ function collectTestFiles(targetPath: string): string[] {
   for (const entry of entries) {
     const fullPath = join(targetPath, entry.name);
     if (entry.isDirectory()) {
-      // Browser smoke tests run through Playwright (`npm run test:e2e`), not
-      // Node's test runner. Running them explicitly still works.
-      if (targetPath === "tests" && entry.name === "e2e") continue;
       results.push(...collectTestFiles(fullPath));
     } else if (
       entry.isFile() &&
       (entry.name.endsWith(".test.ts") ||
         entry.name.endsWith(".test.js") ||
-        entry.name.endsWith(".test.mjs"))
+        entry.name.endsWith(".test.mjs") ||
+        entry.name.endsWith(".spec.ts") ||
+        entry.name.endsWith(".spec.js"))
     ) {
       results.push(fullPath);
     }

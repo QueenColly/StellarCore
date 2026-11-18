@@ -29,22 +29,12 @@ export type AnchorDirectoryRepository = Readonly<{
   findBySlug: (slug: string) => Promise<AnchorDetailRecord | null>;
 }>;
 
-/**
- * Safe query construction note:
- * This repository intentionally uses Prisma's typed Query API (`findMany`, `findUnique`)
- * rather than raw SQL. All user-controlled values (e.g. `slug`) are passed through
- * the `Query WhereInput` object and are parameterized by Prisma. No dynamic identifiers
-* are interpolated into SQL text. Future performance work that needs raw SQL
- * must follow the guardrails in `lib/db/sqlGuardrails.ts` and be accompanied by
-
- * adversarial tests in `lib/db/__tests__/sqlGuardrails.test.ts`.
- */
 export const PRISMA_ANCHOR_DIRECTORY_REPOSITORY = Object.freeze({
   async findAll(): Promise<readonly AnchorDirectoryRecord[]> {
     const { db } = await import("@/lib/dbClient");
     const anchors = await db.anchor.findMany({
       orderBy: { slug: "asc" },
-      select:{
+      select: {
         slug: true,
         name: true,
         homeDomain: true,
@@ -76,7 +66,7 @@ export const PRISMA_ANCHOR_DIRECTORY_REPOSITORY = Object.freeze({
         seps: true,
         corridors: {
           orderBy: { corridor: { slug: "asc" } },
-          select:{
+          select: {
             corridor: {
               select: {
                 slug: true,

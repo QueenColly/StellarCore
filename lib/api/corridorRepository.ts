@@ -1,5 +1,4 @@
 import type { PublicAnchorStatus } from "@/types/api/anchors";
-import { assertSafeIdentifier } from "@/lib/db/sqlSafety";
 
 export type CorridorDirectoryRecord = Readonly<{
   slug: string;
@@ -59,7 +58,6 @@ export const PRISMA_CORRIDOR_DIRECTORY_REPOSITORY = Object.freeze({
   },
 
   async findBySlug(slug: string): Promise<CorridorDetailRecord | null> {
-    assertSafeIdentifier(slug, "corridor slug");
     const { db } = await import("@/lib/dbClient");
     const corridor = await db.corridor.findUnique({
       where: { slug },

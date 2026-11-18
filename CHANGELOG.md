@@ -1,4 +1,3 @@
-
 # Changelog
 
 All notable changes to StellarCore are documented in this file.
@@ -12,21 +11,6 @@ with your pull request.
 
 ### Added
 
-- Resolved base URL resolution for dashboard and client requests, deduplicating path prefixes and safely validating local, preview, and production deployment origins (#439).
-- Public evidence route hardening against malformed percent-encoded path segments, returning safe client errors without exposing raw parser exceptions or executing unintended lookups (#440).
-- Dashboard navigation state coordinator and regression coverage verifying obsolete requests never update inactive views, return navigation follows cache policy, and subscriptions do not leak (#441).
-- Visibility-aware dashboard refresh: the dashboard re-reads its panels at most
-  once per minute while the page is visible, pauses polling entirely while the
-  tab is hidden, and resumes per the documented interval when the page becomes
-  visible again (#443).
-- Evidence-based anchor availability transitions: discovery failures are
-  classified (transient / deterministic / unknown) and a destructive status
-  change requires consecutive-failure or sustained-window evidence, so one
-  transient SEP-1 timeout no longer marks a healthy anchor DOWN. Recovery to
-  LIVE requires repeated successful evidence, and bounded per-anchor health
-  rows (`anchor_health_states`) make transitions deterministic across process
-  restarts. Policy documented in `docs/anchor-health-policy.md`.
-- GitHub issue template for proposing a new corridor to the StellarCore registry (#4).
 - Public API rate limiting, current API reference, reputation methodology documentation, and reputation property tests (#22, #24, #25, #26).
 - Anchor detail UI, median property tests, transfer-outcome webhook schema RFC, and SEP-38 USDC→BRL source research (#5, #7, #18, #21).
 - Public API reference and reputation methodology docs, verified public-route rate limiting, and reputation property coverage recovered from PR #83 (#22, #24, #25, #26).
@@ -56,11 +40,6 @@ with your pull request.
 
 ### Fixed
 
-- The dashboard rate panel now labels a degraded last-known-good response as
-  stale evidence with its snapshot generation time, instead of presenting it as
-  a current read (#445).
-- Public directory pagination now rejects `offset` values that overflow the
-  safe integer range instead of silently serving an empty page (#444).
 - Prevented stale pooled PostgreSQL connections from being reused indefinitely after transient primary termination or endpoint rotation (#209).
 
 ## [Prior work] — 2026-09-25

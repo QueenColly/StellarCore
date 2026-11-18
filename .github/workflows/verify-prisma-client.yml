@@ -1,0 +1,39 @@
+name: Verify Prisma schema and client
+
+on:
+  pull_request:
+    paths:
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/verify-prisma-client.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-prisma:
+    name: Verify Prisma schema and generated client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies cleanly
+        run: npm ci --ignore-scripts
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://stellarcore:stellarcore@localhost:5432/stellarcore
+        run: npx prisma generate
+
+      - name: Verify no drift in committed files
+        run: git diff --exit-code

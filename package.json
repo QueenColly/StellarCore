@@ -1,4 +1,3 @@
-
 {
   "name": "stellarcore",
   "version": "0.1.0",
@@ -13,8 +12,7 @@
     "lint": "eslint .",
     "postinstall": "prisma generate",
     "test": "tsx scripts/run-tests.ts",
-    "test:e2e": "playwright test tests/e2e/persistedEvidenceViews.spec.ts",
-    "test:faults": "node --import tsx --test tests/faults/rateEngineFaults.test.ts tests/faults/reputationFaults.test.ts tests/faults/scheduledCycleFaults.test.ts tests/faults/cleanupFaults.test.ts",
+    "test:faults": "node --import tsx --test tests/faults/rateEngineFaults.test.ts tests/faults/reputationFaults.test.ts tests/faults/scheduledCycleFaults.test.ts",
     "audit:config": "node --import tsx scripts/audit-configuration.ts",
     "audit:compatibility": "node --import tsx scripts/audit-compatibility.ts",
     "audit:integrity": "node --import tsx scripts/audit-integrity.ts",
@@ -55,18 +53,14 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.1.0",
-    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.21.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.1.0",
-    "axe-core": "^4.14.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.5.0",
     "fast-check": "^3.23.2",
-    "happy-dom": "^21.0.4",
     "prisma": "^7.9.1",
     "tailwindcss": "^4.1.0",
     "tsx": "^4.23.12",

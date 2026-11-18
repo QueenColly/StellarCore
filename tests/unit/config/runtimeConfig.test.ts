@@ -245,6 +245,18 @@ test("lib/config/runtimeConfig - validateRuntimeConfig", async () => {
       assert.equal(result.variable, "CRON_SECRET");
     }
   });
+
+  // Regression tests for missing required production environment variables (#380)
+  for (const variable of ["DATABASE_URL", "CRON_SECRET"] as const) {
+    await test(`rejects missing production ${variable}`, () => {
+      const env = { ...baseEnv, STELLARCORE_ENVIRONMENT: "production", [variable]: undefined };
+      const result = validateRuntimeConfig(env);
+      errorResult(result, "MISSING_REQUIRED");
+      if (result.code === "MISSING_REQUIRED") {
+        assert.equal(result.variable, variable);
+      }
+    });
+  }
 });
 
 test("lib/config/runtimeConfig - assertRuntimeConfig", async () => {

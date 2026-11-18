@@ -36,19 +36,18 @@ export type RateHistoryApiDependencies = Readonly<{
   now?: () => Date;
   staleEvidenceStore?: StaleEvidenceStore;
   reportError?: PublicApiErrorReporter;
-  /** Correlation id published with failures and recorded in the failure log. */
-  requestId?: string;
+  signal?: AbortSignal;
 }>;
 
 export async function getRateHistoryApiResult(
-  corridorParameter: string | null,
-  daysParameter: string | null = null,
+  corridorParameter: string | readonly string[] | null,
+  daysParameter: string | readonly string[] | null = null,
   dependencies: RateHistoryApiDependencies = {},
 ): Promise<RateHistoryApiResult> {
-  const corridorValidation = validateCorridorParameter(corridorParameter, dependencies.requestId);
+  const corridorValidation = validateCorridorParameter(corridorParameter);
   if (!corridorValidation.ok) return corridorValidation.result;
 
-  const daysValidation = validateDaysParameter(daysParameter, dependencies.requestId);
+  const daysValidation = validateDaysParameter(daysParameter);
   if (!daysValidation.ok) return daysValidation.result;
 
   const evaluatedAt = dependencies.now?.() ?? new Date();
@@ -63,6 +62,9 @@ export async function getRateHistoryApiResult(
       days: daysValidation.days,
     });
   } catch (error) {
+    if (dependencies.signal?.aborted) {
+      throw dependencies.signal.reason ?? new Error("The operation was aborted");
+    }
     if (isTransientDatabaseFailure(error)) {
       const stale = await restoreStaleEvidence(store, snapshotKey, evaluatedAt);
       if (stale) {
@@ -74,26 +76,21 @@ export async function getRateHistoryApiResult(
       }
     }
     reportError(dependencies, error, "rate-history.read");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to read rate history.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to read rate history.");
+  }
+
+  if (dependencies.signal?.aborted) {
+    throw dependencies.signal.reason ?? new Error("The operation was aborted");
   }
 
   if (!result.ok) {
     if (result.code === "CORRIDOR_NOT_FOUND") {
-      return publicApiErrorResult(
-        "corridor_not_found",
-        "Corridor not found.",
-        dependencies.requestId,
-      );
+      return publicApiErrorResult("corridor_not_found", "Corridor not found.");
     }
     if (result.code === "INVALID_WINDOW") {
       return publicApiErrorResult(
         "invalid_days",
         `The days parameter must be an integer between ${MIN_DAYS} and ${MAX_DAYS}.`,
-        dependencies.requestId,
       );
     }
     if (result.code === "DATABASE_UNAVAILABLE") {
@@ -106,15 +103,7 @@ export async function getRateHistoryApiResult(
         });
       }
     }
-    // A read-model failure that has no stale snapshot used to become a silent
-    // 500. Report it with the published correlation id so the id a user quotes
-    // always has a matching log entry.
-    reportError(dependencies, result, "rate-history.read_model");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to read rate history.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to read rate history.");
   }
 
   try {
@@ -126,11 +115,7 @@ export async function getRateHistoryApiResult(
     return Object.freeze({ status: 200, body });
   } catch (error) {
     reportError(dependencies, error, "rate-history.serialize");
-    return publicApiErrorResult(
-      "internal_error",
-      "Unable to read rate history.",
-      dependencies.requestId,
-    );
+    return publicApiErrorResult("internal_error", "Unable to read rate history.");
   }
 }
 
@@ -187,19 +172,21 @@ export function serializeRateHistory(
 }
 
 function validateCorridorParameter(
-  value: string | null,
-  requestId?: string,
+  value: string | readonly string[] | null,
 ):
   | Readonly<{ ok: true; corridorSlug: string }>
   | Readonly<{ ok: false; result: RateHistoryApiResult }> {
   if (value === null || value === "") {
     return Object.freeze({
       ok: false,
-      result: publicApiErrorResult(
-        "missing_corridor",
-        "A corridor slug is required.",
-        requestId,
-      ),
+      result: publicApiErrorResult("missing_corridor", "A corridor slug is required."),
+    });
+  }
+
+  if (typeof value !== "string") {
+    return Object.freeze({
+      ok: false,
+      result: publicApiErrorResult("invalid_corridor", "The corridor slug is invalid."),
     });
   }
 
@@ -209,11 +196,7 @@ function validateCorridorParameter(
   ) {
     return Object.freeze({
       ok: false,
-      result: publicApiErrorResult(
-        "invalid_corridor",
-        "The corridor slug is invalid.",
-        requestId,
-      ),
+      result: publicApiErrorResult("invalid_corridor", "The corridor slug is invalid."),
     });
   }
 
@@ -221,13 +204,22 @@ function validateCorridorParameter(
 }
 
 function validateDaysParameter(
-  value: string | null,
-  requestId?: string,
+  value: string | readonly string[] | null,
 ):
   | Readonly<{ ok: true; days: number }>
   | Readonly<{ ok: false; result: RateHistoryApiResult }> {
   if (value === null || value === "") {
     return Object.freeze({ ok: true, days: DEFAULT_DAYS });
+  }
+
+  if (typeof value !== "string") {
+    return Object.freeze({
+      ok: false,
+      result: publicApiErrorResult(
+        "invalid_days",
+        `The days parameter must be an integer between ${MIN_DAYS} and ${MAX_DAYS}.`,
+      ),
+    });
   }
 
   if (!/^\d+$/.test(value)) {
@@ -236,7 +228,6 @@ function validateDaysParameter(
       result: publicApiErrorResult(
         "invalid_days",
         `The days parameter must be an integer between ${MIN_DAYS} and ${MAX_DAYS}.`,
-        requestId,
       ),
     });
   }
@@ -248,7 +239,6 @@ function validateDaysParameter(
       result: publicApiErrorResult(
         "invalid_days",
         `The days parameter must be an integer between ${MIN_DAYS} and ${MAX_DAYS}.`,
-        requestId,
       ),
     });
   }
@@ -264,6 +254,5 @@ function reportError(
   (dependencies.reportError ?? consolePublicApiErrorReporter)(error, {
     operation,
     code: "internal_error",
-    requestId: dependencies.requestId,
   });
 }

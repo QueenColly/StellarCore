@@ -20,8 +20,8 @@ import type {
  * are DETERMINISTIC. An HTTP_FAILURE is refined by status: server-side (5xx)
  * or statusless responses are TRANSIENT, while a 4xx response means the TOML
  * is gone or blocked by policy and will not recover on retry, so it is
- * DETERMINISTIC. Anything else — including errors that are not
- * Sep1DiscoveryError — is UNKNOWN and escalates no faster than classified
+ * DETERMINISTIC. Anything else â€” including errors that are not
+ * Sep1DiscoveryError â€” is UNKNOWN and escalates no faster than classified
  * transient evidence.
  */
 export function classifyAnchorFailure(error: unknown): AnchorFailureClass {
