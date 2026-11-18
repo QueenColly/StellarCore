@@ -48,16 +48,9 @@ export type NormalizeIndicativeRateInput = Readonly<{
   expectedBuyAsset?: Sep38AssetIdentifier;
 }>;
 
-/**
- * A normalized quote before capture-time provenance is attached. The rate
- * engine adds the reviewed configuration fingerprint, so callers cannot
- * accidentally persist an observation without lineage.
- */
-export type NormalizedRateQuote = Omit<NormalizedRateObservation, "configurationFingerprint">;
-
 export function normalizeIndicativeRate(
   input: NormalizeIndicativeRateInput,
-): NormalizedRateQuote {
+): NormalizedRateObservation {
   if (!isStableSlug(input.anchorSlug)) fail("INVALID_ANCHOR");
   if (!isStableSlug(input.corridor.slug)) fail("INVALID_CORRIDOR");
 

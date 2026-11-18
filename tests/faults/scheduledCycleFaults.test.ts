@@ -1,32 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { evaluateAnchorReputation } from "@/lib/reputation/engine";
-import { evaluatePersistedAnchorReputations } from "@/lib/reputation/run";
-import { runRateEngine } from "@/lib/rates/rateEngine";
-import { formatLiveRateRunSummary } from "@/lib/rates/liveRateSource";
 import { runScheduledRefresh } from "@/lib/scheduled/refresh";
 import { getScheduledRefreshResponse } from "@/lib/scheduled/http";
 import type { ScheduledRefreshDependencies } from "@/lib/scheduled/refresh";
-import type { ReputationRepository } from "@/types/reputation";
-import type { RateCandidate, RateSnapshotRepository } from "@/types/rates";
-import type { Sep38IndicativePrice } from "@/types/sep38";
 import type { SafeLiveRateRunSummary } from "@/types/liveRateSource";
 import type { ReputationEvaluationRunSummary } from "@/lib/reputation/run";
-import {
-  clock,
-  deadlineAfter,
-  DeadlineError,
-  faultReputationRepository,
-  faultSnapshotRepository,
-  reputationLedger,
-  snapshotLedger,
-} from "./faultKit.js";
+import { clock, deadlineAfter, DeadlineError } from "./faultKit.js";
 
 const STARTED_AT = new Date("2026-09-30T00:00:00.000Z");
 const COMPLETED_AT = new Date("2026-09-30T00:00:01.000Z");
-const USDC = "stellar:USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" as const;
-const NGN = "iso4217:NGN" as const;
 
 // [O1] Orchestration under faults: rate ingestion still precedes reputation
 // evaluation when rates fail, and the run summary reflects both truths with
@@ -232,100 +215,6 @@ test("[O7] the HTTP boundary keeps no-store semantics under fault responses", as
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
-test("[O8] mixed task outcomes preserve committed evidence and report partial failure", async () => {
-  const rateEvidence = snapshotLedger();
-  const reputationEvidence = reputationLedger();
-  const candidates = [candidate("anchor-a"), candidate("anchor-b")];
-  const evidenceBySlug = {
-    "anchor-a": {
-      anchorId: "anchor:anchor-a",
-      status: "LIVE" as const,
-      corridorSlugs: ["usdc-us-ngn-ng"],
-      latestRateCount: 1,
-      outcomeCount: 1,
-      completedOutcomeCount: 1,
-    },
-    "anchor-b": {
-      anchorId: "anchor:anchor-b",
-      status: "LIVE" as const,
-      corridorSlugs: ["usdc-us-ngn-ng"],
-      latestRateCount: 1,
-      outcomeCount: 1,
-      completedOutcomeCount: 1,
-    },
-  };
-  const rateRepository = faultSnapshotRepository(rateEvidence, {
-    createSnapshot: ["ok", "fault:DB_CONNECTION_LOST"],
-  }) as RateSnapshotRepository;
-  const reputationRepository = faultReputationRepository(reputationEvidence, evidenceBySlug, {
-    upsertScore: ["ok", "fault:DB_CONNECTION_LOST"],
-  }) as unknown as ReputationRepository;
-
-  const result = await runScheduledRefresh(dependencies({
-    snapshotRates: async () => formatLiveRateRunSummary(await runRateEngine(candidates, {
-      quote: async () => okQuote(),
-      repository: rateRepository,
-      now: () => STARTED_AT,
-      configurationFingerprint: "test-fingerprint",
-    })),
-    evaluateReputation: ({ evaluatedAt }) => evaluatePersistedAnchorReputations({
-      anchorSlugs: Object.keys(evidenceBySlug),
-      evaluatedAt,
-      dependencies: {
-        listAnchorSlugs: async () => Object.keys(evidenceBySlug),
-        evaluate: (slug) => evaluateAnchorReputation(slug, {
-          repository: reputationRepository,
-          evaluatedAt,
-        }),
-      },
-    }),
-  }));
-
-  assert.equal(result.ok, false);
-  assert.deepEqual(
-    [result.rates.succeeded, result.rates.failed, result.reputation.succeeded, result.reputation.failed],
-    [1, 1, 1, 1],
-  );
-  assert.equal(rateEvidence.idsForAnchor("anchor-a").length, 1);
-  assert.equal(rateEvidence.idsForAnchor("anchor-b").length, 0);
-  assert.ok(reputationEvidence.scores.has("anchor:anchor-a"));
-  assert.equal(reputationEvidence.scores.has("anchor:anchor-b"), false);
-
-  const committedSnapshot = rateEvidence.rows[0];
-  const retryCandidates = candidates.filter((entry) => result.rates.failures.some(
-    (failure) => failure.phase !== "PREPARATION" &&
-      failure.anchorSlug === entry.anchorSlug && failure.corridorSlug === entry.corridor.slug,
-  ));
-  const rateRetry = await runRateEngine(retryCandidates, {
-    quote: async () => okQuote(),
-    repository: faultSnapshotRepository(rateEvidence) as RateSnapshotRepository,
-    now: () => STARTED_AT,
-    configurationFingerprint: "test-fingerprint",
-  });
-  assert.equal(rateRetry.succeeded, 1);
-  assert.equal(rateRetry.failed, 0);
-  assert.equal(rateEvidence.count(), 2);
-  assert.equal(rateEvidence.idsForAnchor("anchor-a").length, 1);
-  assert.equal(rateEvidence.idsForAnchor("anchor-b").length, 1);
-  assert.deepEqual(rateEvidence.rows[0], committedSnapshot);
-
-  const retryRepository = faultReputationRepository(reputationEvidence, evidenceBySlug) as unknown as ReputationRepository;
-  const retry = await evaluatePersistedAnchorReputations({
-    anchorSlugs: Object.keys(evidenceBySlug),
-    evaluatedAt: STARTED_AT,
-    dependencies: {
-      listAnchorSlugs: async () => Object.keys(evidenceBySlug),
-      evaluate: (slug) => evaluateAnchorReputation(slug, {
-        repository: retryRepository,
-        evaluatedAt: STARTED_AT,
-      }),
-    },
-  });
-
-  assert.equal(retry.succeeded, 2);
-  assert.equal(reputationEvidence.scores.size, 2);
-});
-
 function dependencies(
   overrides: Partial<ScheduledRefreshDependencies>,
 ): ScheduledRefreshDependencies {
@@ -336,32 +225,6 @@ function dependencies(
     now: () => (clockCalls++ % 2 === 0 ? STARTED_AT : COMPLETED_AT),
     ...overrides,
   };
-}
-
-function candidate(anchorSlug: string): RateCandidate {
-  return Object.freeze({
-    anchorSlug,
-    corridor: Object.freeze({
-      slug: "usdc-us-ngn-ng",
-      assetCodeFrom: "USDC",
-      countryFrom: "US",
-      assetCodeTo: "NGN",
-      countryTo: "NG",
-    }),
-    request: Object.freeze({ sellAsset: USDC, buyAsset: NGN, sellAmount: "100", context: "sep31" }),
-  });
-}
-
-function okQuote(): Sep38IndicativePrice {
-  return Object.freeze({
-    sellAsset: USDC,
-    buyAsset: NGN,
-    totalPrice: "1",
-    price: "1",
-    sellAmount: "100",
-    buyAmount: "100",
-    fee: Object.freeze({ total: "0", asset: NGN, details: Object.freeze([]) }),
-  });
 }
 
 type InterruptedOutcome =

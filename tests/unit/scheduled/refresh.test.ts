@@ -1,11 +1,10 @@
-import assert from "node:assert";
+import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
   runScheduledRefresh,
   type ScheduledRefreshDependencies,
 } from "@/lib/scheduled/refresh";
-import type { SuppressionRepository } from "@/lib/scheduled/suppressionRepository";
 import type { SafeLiveRateRunSummary } from "@/types/liveRateSource";
 
 const STARTED_AT = new Date("2026-08-31T16:00:00.000Z");
@@ -25,13 +24,13 @@ test("scheduled refresh ingests rates before evaluating reputation and returns a
   }));
 
   assert.deepEqual(order, ["rates", "reputation:2026-08-31T16:00:00.000Z"]);
-  assert.deepEqual(result, {
-    ok: true,
-    startedAt: STARTED_AT.toISOString(),
-    completedAt: COMPLETED_AT.toISOString(),
-    rates: { attempted: 1, succeeded: 1, failed: 0, skipped: 0, suppressed: 0, failures: [], skippedSources: [] },
-    reputation: { attempted: 3, succeeded: 3, failed: 0, failures: [] },
-  });
+  assert.equal(result.ok, true);
+  assert.equal(result.startedAt, STARTED_AT.toISOString());
+  assert.equal(result.completedAt, COMPLETED_AT.toISOString());
+  assert.equal(result.attempt, 1);
+  assert.ok(typeof result.runId === "string" && result.runId.length > 0);
+  assert.deepEqual(result.rates, { attempted: 1, succeeded: 1, failed: 0, skipped: 0, failures: [] });
+  assert.deepEqual(result.reputation, { attempted: 3, succeeded: 3, failed: 0, failures: [] });
   assert.equal(Object.isFrozen(result), true);
   assert.doesNotThrow(() => JSON.stringify(result));
 });
@@ -59,67 +58,6 @@ test("a rate source partial failure is reported while reputation still evaluates
     phase: "QUOTE",
     code: "QUOTE_FAILURE",
   }]);
-  assert.equal(result.rates.suppressed, 0);
-});
-
-test("deterministic configuration failures are recorded against the durable suppression store", async () => {
-  const recorded: unknown[] = [];
-  const result = await runScheduledRefresh(dependencies({
-    snapshotRates: async () => rateSummary({
-      succeeded: 0,
-      failed: 1,
-      snapshotsPersisted: 0,
-      failures: [{ anchorSlug: "zeam", corridorSlug: "usdc-us-brl-br", phase: "NORMALIZATION", code: "INVALID_ANCHOR" }],
-    }),
-    suppressions: suppressionRepository({
-      recordDeterministicFailure: async (input) => {
-        recorded.push(input);
-        return {} as never;
-      },
-    }),
-  }));
-
-  assert.equal(result.ok, false);
-  assert.equal(recorded.length, 1);
-  assert.deepEqual(recorded[0], {
-    anchorSlug: "zeam",
-    corridorSlug: "usdc-us-brl-br",
-    reason: "PERMANENT_CONFIGURATION",
-    failureCode: "INVALID_ANCHOR",
-    failurePhase: "NORMALIZATION",
-    observedAt: STARTED_AT,
-  });
-});
-
-test("transient failures are never recorded as permanent suppressions", async () => {
-  const recorded: unknown[] = [];
-  const result = await runScheduledRefresh(dependencies({
-    snapshotRates: async () => rateSummary({
-      succeeded: 0,
-      failed: 1,
-      snapshotsPersisted: 0,
-      failures: [{ anchorSlug: "zeam", corridorSlug: "usdc-us-brl-br", phase: "QUOTE", code: "QUOTE_TIMEOUT" }],
-    }),
-    suppressions: suppressionRepository({
-      recordDeterministicFailure: async (input) => {
-        recorded.push(input);
-        return {} as never;
-      },
-    }),
-  }));
-
-  assert.equal(result.ok, false);
-  assert.deepEqual(recorded, []);
-});
-
-test("suppressed sources are reported without fabricating fresh evidence", async () => {
-  const result = await runScheduledRefresh(dependencies({
-    snapshotRates: async () => rateSummary({ suppressed: 2, totalCandidates: 3 }),
-  }));
-
-  assert.equal(result.rates.suppressed, 2);
-  assert.equal(result.rates.succeeded, 1);
-  assert.equal(result.rates.attempted, 1);
 });
 
 test("a rate preparation failure is safely serialized and does not prevent reputation evaluation", async () => {
@@ -146,9 +84,7 @@ test("a rate preparation failure is safely serialized and does not prevent reput
     succeeded: 0,
     failed: 1,
     skipped: 0,
-    suppressed: 0,
     failures: [{ phase: "PREPARATION", code: "LIVE_RATE_PREPARATION_FAILURE" }],
-    skippedSources: [],
   });
   assert.equal(JSON.stringify(result).includes("should-not-leak"), false);
 });
@@ -189,19 +125,7 @@ function dependencies(overrides: Partial<ScheduledRefreshDependencies>): Schedul
   return Object.freeze({
     snapshotRates: async () => rateSummary(),
     evaluateReputation: async () => reputationSummary(),
-    suppressions: suppressionRepository(),
     now: () => (clockCalls++ % 2 === 0 ? STARTED_AT : COMPLETED_AT),
-    ...overrides,
-  });
-}
-
-function suppressionRepository(
-  overrides: Partial<SuppressionRepository> = {},
-): SuppressionRepository {
-  return Object.freeze({
-    listSuppressed: async () => [],
-    recordDeterministicFailure: async () => ({} as never),
-    reactivate: async () => null,
     ...overrides,
   });
 }
@@ -213,7 +137,6 @@ function rateSummary(overrides: Partial<SafeLiveRateRunSummary> = {}): SafeLiveR
     succeeded: 1,
     failed: 0,
     skipped: 0,
-    suppressed: 0,
     snapshotsPersisted: 1,
     snapshots: [],
     failures: [],

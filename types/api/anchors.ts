@@ -47,8 +47,6 @@ export type AnchorsApiErrorResponse = Readonly<{
   error: Readonly<{
     code: AnchorsApiErrorCode;
     message: string;
-    /** Optional, additive request-correlation id (see `lib/api/requestId.ts`). */
-    requestId?: string;
   }>;
 }>;
 

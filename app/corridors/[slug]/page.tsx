@@ -75,12 +75,8 @@ export default async function CorridorPage({ params }: Props) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <h3 className="text-lg text-[var(--white)]" style={{ fontFamily: "var(--display)" }}>
-                          {anchor.name?.trim() ? anchor.name : anchor.slug}
-                        </h3>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {anchor.homeDomain?.trim() ? anchor.homeDomain : "—"}
-                        </p>
+                        <h3 className="text-lg text-[var(--white)]" style={{ fontFamily: "var(--display)" }}>{anchor.name}</h3>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{anchor.homeDomain}</p>
                       </div>
                       <span className="text-xs uppercase tracking-wide text-[var(--muted)]">{anchor.status}</span>
                     </div>
@@ -101,7 +97,6 @@ export default async function CorridorPage({ params }: Props) {
 
           {historyResult.status === 200 ? (
             <CorridorRateHistoryChart
-              key={corridor.slug}
               corridorSlug={corridor.slug}
               initialHistory={historyResult.body}
             />

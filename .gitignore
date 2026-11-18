@@ -28,10 +28,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Playwright
-/test-results/
-/playwright-report/
-
 # OS
 .DS_Store
 

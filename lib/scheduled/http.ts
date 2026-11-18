@@ -1,5 +1,4 @@
 import { hasValidCronAuthorization } from "@/lib/scheduled/cronAuth";
-import { evaluateCronTimestamp } from "@/lib/scheduled/cronTimestamp";
 import { runScheduledRefresh } from "@/lib/scheduled/refresh";
 import type { ScheduledRefreshResult } from "@/types/scheduled";
 
@@ -8,8 +7,6 @@ export type ScheduledRefreshHttpDependencies = Readonly<{
   cronPreviousSecret?: string | undefined;
   cronRotationUntil?: string | undefined;
   cronNow?: () => number;
-  cronTimestampNow?: () => Date;
-  cronTimestampSkewMs?: number;
   run?: () => Promise<ScheduledRefreshResult>;
 }>;
 
@@ -25,18 +22,6 @@ export async function getScheduledRefreshResponse(
     dependencies.cronNow,
   )) {
     return json({ error: { code: "unauthorized", message: "Unauthorized." } }, 401);
-  }
-
-  const timestampHeader = request.headers.get("x-cron-timestamp");
-  if (timestampHeader !== null || dependencies.cronTimestampNow !== undefined) {
-    const decision = evaluateCronTimestamp({
-      timestamp: timestampHeader ?? undefined,
-      now: dependencies.cronTimestampNow ?? (() => new Date()),
-      allowedSkewMs: dependencies.cronTimestampSkewMs,
-    });
-    if (!decision.ok) {
-      return json({ error: { code: "unauthorized", message: "Unauthorized." } }, 401);
-    }
   }
 
   try {

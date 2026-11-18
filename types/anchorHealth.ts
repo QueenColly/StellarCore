@@ -22,7 +22,7 @@ export type AnchorFailureClass = "TRANSIENT" | "DETERMINISTIC" | "UNKNOWN";
 
 /**
  * One bounded health-evidence record persisted per anchor. It contains only
- * counters and timestamps — no error text — so the state machine can make
+ * counters and timestamps â€” no error text â€” so the state machine can make
  * deterministic transitions across process restarts and horizontal runs.
  */
 export type AnchorHealthState = Readonly<{

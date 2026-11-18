@@ -27,7 +27,6 @@ test("[R1] quote-phase fault fails exactly one source without fabricating succes
     quote: sequencedQuote(["fault:NETWORK_FAILURE", "ok", "ok"]),
     repository: repository(ledger),
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(result.totalAttempted, 3);
@@ -43,6 +42,13 @@ test("[R1] quote-phase fault fails exactly one source without fabricating succes
   assert.deepEqual(ledger.idsForAnchor("anchor-a"), []);
   assert.equal(ledger.idsForAnchor("anchor-b").length, 1);
   assert.equal(ledger.idsForAnchor("anchor-c").length, 1);
+  // Committed rows share one capture-run identity; the failed source left
+  // neither a snapshot nor a provenance row.
+  assert.deepEqual(
+    [...new Set(ledger.rows.map(({ captureRunId }) => captureRunId))],
+    [result.captureRunId],
+  );
+  assert.equal(ledger.rows.every(({ configurationDigest }) => configurationDigest === "c".repeat(64)), true);
 });
 
 // [R2] A persistence fault mid-cycle: the quote succeeded but nothing is
@@ -57,7 +63,6 @@ test("[R2] persistence-phase fault keeps the run partial and attributes the fail
     quote: async () => okQuote(),
     repository: faulted,
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(result.succeeded, 2);
@@ -84,7 +89,6 @@ test("[R3] mid-cycle database disconnect preserves committed rows and reports th
     quote: async () => okQuote(),
     repository: connectableRepository,
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(result.succeeded, 2);
@@ -104,7 +108,6 @@ test("[R4] deadline-exceeded during quote maps to QUOTE_FAILURE without partial 
     quote: sequencedQuote(["deadline:DEADLINE_EXCEEDED"]),
     repository: repository(ledger),
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(result.succeeded, 0);
@@ -130,7 +133,6 @@ test("[R5] malformed quote fails normalization without any database interaction"
     quote: async () => okQuote({ price: "not-a-number", totalPrice: "not-a-number" }),
     repository: countingRepository,
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(result.failed, 1);
@@ -148,7 +150,6 @@ test("[R6] duplicate candidates are skipped without consuming quote or persisten
       quote: sequencedQuote(["ok"]),
       repository: repository(ledger, { createSnapshot: ["ok", "fault:SHOULD_NOT_FIRE"] }),
       now: () => NOW,
-      configurationFingerprint: "test-fingerprint",
     },
   );
 
@@ -170,7 +171,6 @@ test("[R7] rerun after partial failure completes the set without duplicating pri
     quote: async () => okQuote(),
     repository: repository(ledger, faulted),
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
   assert.equal(before.succeeded, 0);
   assert.equal(before.failed, 3);
@@ -180,7 +180,6 @@ test("[R7] rerun after partial failure completes the set without duplicating pri
     quote: async () => okQuote(),
     repository: repository(ledger),
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(after.succeeded, 3);
@@ -202,7 +201,6 @@ test("[R8] persisted snapshots round-trip their inputs exactly (no fabricated va
     }),
     repository: repository(ledger),
     now: () => NOW,
-    configurationFingerprint: "test-fingerprint",
   });
 
   assert.equal(result.snapshotsPersisted, 1);
@@ -227,6 +225,7 @@ function candidate(anchorSlug: string): RateCandidate {
       countryTo: "NG",
     }),
     request: Object.freeze({ sellAsset: USDC, buyAsset: NGN, sellAmount: "100", context: "sep31" }),
+    configurationDigest: "c".repeat(64),
   });
 }
 
@@ -246,6 +245,7 @@ function okQuote(overrides: Partial<Sep38IndicativePrice> = {}): Sep38Indicative
 function sequencedQuote(outcomes: readonly string[]) {
   const responder = ((): ((candidate: RateCandidate) => Promise<Sep38IndicativePrice>) => {
     let call = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     return async (_candidate: RateCandidate) => {
       const outcome = call < outcomes.length ? outcomes[call] : "ok";
       call += 1;

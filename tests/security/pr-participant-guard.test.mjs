@@ -203,11 +203,21 @@ test("new unexpected participation changes a previously passing result to failur
   }), config).status, "failure");
 });
 
-test("the disabled participant-guard workflow remains absent", async () => {
-  await assert.rejects(
-    readFile(new URL("../../.github/workflows/pr-participant-guard.yml", import.meta.url), "utf8"),
-    { code: "ENOENT" },
-  );
+test("workflow is read-only, runs trusted default-branch code, and listens for participation changes", async () => {
+  const workflow = await readFile(new URL("../../.github/workflows/pr-participant-guard.yml", import.meta.url), "utf8");
+  assert.match(workflow, /pull_request_target:/);
+  assert.match(workflow, /issue_comment:/);
+  assert.match(workflow, /pull_request_review:/);
+  assert.match(workflow, /pull_request_review_comment:/);
+  assert.match(workflow, /review_requested/);
+  assert.match(workflow, /review_request_removed/);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /issues: read/);
+  assert.match(workflow, /pull-requests: read/);
+  assert.doesNotMatch(workflow, /pull-requests: write|issues: write|contents: write/);
+  assert.doesNotMatch(workflow, /npm install|npm ci|pnpm install|npm test/);
 });
 
 

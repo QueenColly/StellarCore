@@ -1,4 +1,3 @@
-
 import { domainToASCII, domainToUnicode } from "node:url";
 
 export class HostnameValidationError extends Error {
@@ -35,13 +34,10 @@ const TLD_REGEX = /^[a-z]{2,63}$|^xn--[a-z0-9-]{2,59}$/;
  * Enforces:
  * 1. Trailing dots are stripped.
  * 2. Case is normalized to lowercase.
- * 3. Internationalized Domain Names (IDN / Unicode) are converted to
- *    canonical ASCII (A-label / punycode).
- * 4. Disallows spaces, control characters, and leading/trailing hyphens
- *    per label.
- * 5. Enforces label lengths (1..63) and total hostname length (1..253).
- * 6. Disallows empty labels and hostnames without a valid TLD.
- * 7. Rejects labels mixing Latin with Cyrillic or Greek scripts.
+ * 3. Internationalized Domain Names (IDN / Unicode) are safely converted to canonical ASCII (A-label / punycode).
+ * 4. Disallows spaces, control characters, leading/trailing hyphens per label.
+ * 5. Bounded label lengths (1..63) and total hostname length (1..253).
+ * 6. Disallows consecutive dots (empty labels) or single-label hostnames without a valid TLD.
  */
 export function canonicalizeHostname(rawHostname: string): string {
   if (typeof rawHostname !== "string" || !rawHostname.trim()) {
@@ -53,7 +49,7 @@ export function canonicalizeHostname(rawHostname: string): string {
 
   const trimmed = rawHostname.trim();
 
-  // Strip trailing dots for FQDN normalization.
+  // Strip trailing dot(s) for FQDN normalization
   let cleaned = trimmed;
   while (cleaned.endsWith(".")) {
     cleaned = cleaned.slice(0, -1);
@@ -66,7 +62,7 @@ export function canonicalizeHostname(rawHostname: string): string {
     );
   }
 
-  // Reject consecutive dots, e.g. foo..bar.
+  // Reject consecutive dots e.g. foo..bar
   if (cleaned.includes("..")) {
     throw new HostnameValidationError(
       "DISALLOWED_CHARACTERS",
@@ -74,7 +70,7 @@ export function canonicalizeHostname(rawHostname: string): string {
     );
   }
 
-  // Reject whitespace or control characters.
+  // Reject whitespace or control characters
   if (/[\s\x00-\x1F\x7F]/.test(cleaned)) {
     throw new HostnameValidationError(
       "DISALLOWED_CHARACTERS",
@@ -82,9 +78,8 @@ export function canonicalizeHostname(rawHostname: string): string {
     );
   }
 
-  // Convert Unicode IDNs to ASCII using Node.js IDNA / UTS #46 handling.
+  // Convert Unicode IDN to ASCII punycode via standard Node.js IDNA / UTS#46
   let asciiHostname: string;
-
   try {
     asciiHostname = domainToASCII(cleaned);
   } catch {
@@ -101,18 +96,15 @@ export function canonicalizeHostname(rawHostname: string): string {
     );
   }
 
-  // Normalize to lowercase, then decode the canonical A-label form to check
-  // for ambiguous mixed Latin/Cyrillic or Latin/Greek labels, including
-  // hostnames supplied directly in punycode.
+  // Normalize to lowercase, then decode the canonical A-label form once so
+  // visually ambiguous mixed Latin/Cyrillic or Latin/Greek labels fail closed
+  // even when the caller supplied punycode directly.
   asciiHostname = asciiHostname.toLowerCase();
-
   const unicodeHostname = domainToUnicode(asciiHostname);
-
   for (const label of unicodeHostname.split(".")) {
     const hasLatin = /\p{Script=Latin}/u.test(label);
     const hasCyrillic = /\p{Script=Cyrillic}/u.test(label);
     const hasGreek = /\p{Script=Greek}/u.test(label);
-
     if (hasLatin && (hasCyrillic || hasGreek)) {
       throw new HostnameValidationError(
         "AMBIGUOUS_UNICODE",
@@ -121,7 +113,7 @@ export function canonicalizeHostname(rawHostname: string): string {
     }
   }
 
-  // Total length check: 1 to 253 characters.
+  // Total length check: 1 to 253 characters
   if (asciiHostname.length < 1 || asciiHostname.length > 253) {
     throw new HostnameValidationError(
       "INVALID_LENGTH",
@@ -131,7 +123,7 @@ export function canonicalizeHostname(rawHostname: string): string {
 
   const labels = asciiHostname.split(".");
 
-  // Require at least a domain label and a top-level domain.
+  // Anchors and SEP services require at least a domain name and TLD (e.g. example.com)
   if (labels.length < 2) {
     throw new HostnameValidationError(
       "INVALID_HOSTNAME",
@@ -139,8 +131,10 @@ export function canonicalizeHostname(rawHostname: string): string {
     );
   }
 
-  // Validate each label against LDH rules.
-  for (const label of labels) {
+  // Validate each label against LDH rules (letters, digits, hyphen, max 63 chars)
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i];
+
     if (label.length < 1 || label.length > 63) {
       throw new HostnameValidationError(
         "LABEL_TOO_LONG",
@@ -156,9 +150,8 @@ export function canonicalizeHostname(rawHostname: string): string {
     }
   }
 
-  // Validate the top-level domain.
+  // Validate Top-Level Domain (last label)
   const tld = labels[labels.length - 1];
-
   if (!TLD_REGEX.test(tld)) {
     throw new HostnameValidationError(
       "INVALID_HOSTNAME",
@@ -170,13 +163,9 @@ export function canonicalizeHostname(rawHostname: string): string {
 }
 
 /**
- * Checks whether two hostname representations are semantically equivalent
- * after canonicalization.
+ * Checks whether two hostname representations are semantically equivalent after canonicalization.
  */
-export function areHostnamesEquivalent(
-  hostA: string,
-  hostB: string,
-): boolean {
+export function areHostnamesEquivalent(hostA: string, hostB: string): boolean {
   try {
     return canonicalizeHostname(hostA) === canonicalizeHostname(hostB);
   } catch {

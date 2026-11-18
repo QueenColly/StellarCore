@@ -6,14 +6,16 @@
  * exactly as before.
  */
 
+import { readQueryParameter } from "@/lib/api/http";
+
 export const MAX_PAGE_LIMIT = 100;
 
 const POSITIVE_INTEGER_PATTERN = /^[1-9][0-9]*$/;
 const NON_NEGATIVE_INTEGER_PATTERN = /^(?:0|[1-9][0-9]*)$/;
 
 export type PaginationQuery = Readonly<{
-  limit: string | null;
-  offset: string | null;
+  limit: string | readonly string[] | null;
+  offset: string | readonly string[] | null;
 }>;
 
 export type Pagination = Readonly<{
@@ -34,8 +36,8 @@ export const NO_PAGINATION_QUERY: PaginationQuery = Object.freeze({
 
 export function readPaginationQuery(parameters: URLSearchParams): PaginationQuery {
   return Object.freeze({
-    limit: parameters.get("limit"),
-    offset: parameters.get("offset"),
+    limit: readQueryParameter(parameters, "limit"),
+    offset: readQueryParameter(parameters, "offset"),
   });
 }
 
@@ -68,9 +70,15 @@ export function paginate<T>(
 }
 
 function parseLimit(
-  raw: string | null,
+  raw: string | readonly string[] | null,
 ): Readonly<{ ok: true; value: number | null }> | Readonly<{ ok: false; message: string }> {
   if (raw === null) return Object.freeze({ ok: true, value: null });
+  if (typeof raw !== "string") {
+    return Object.freeze({
+      ok: false,
+      message: `limit must be a positive integer no greater than ${MAX_PAGE_LIMIT}.`,
+    });
+  }
   if (!POSITIVE_INTEGER_PATTERN.test(raw)) {
     return Object.freeze({
       ok: false,
@@ -90,9 +98,15 @@ function parseLimit(
 }
 
 function parseOffset(
-  raw: string | null,
+  raw: string | readonly string[] | null,
 ): Readonly<{ ok: true; value: number }> | Readonly<{ ok: false; message: string }> {
   if (raw === null) return Object.freeze({ ok: true, value: 0 });
+  if (typeof raw !== "string") {
+    return Object.freeze({
+      ok: false,
+      message: "offset must be a non-negative integer.",
+    });
+  }
   if (!NON_NEGATIVE_INTEGER_PATTERN.test(raw)) {
     return Object.freeze({
       ok: false,
@@ -100,16 +114,5 @@ function parseOffset(
     });
   }
 
-  // A syntactically valid integer can still overflow the safe range. Reject it
-  // instead of silently accepting `Infinity`, which would return an empty
-  // page for a value that is not an integer at all.
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value)) {
-    return Object.freeze({
-      ok: false,
-      message: "offset must be a non-negative integer.",
-    });
-  }
-
-  return Object.freeze({ ok: true, value });
+  return Object.freeze({ ok: true, value: Number(raw) });
 }

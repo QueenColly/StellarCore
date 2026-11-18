@@ -1,10 +1,18 @@
-import * as React from "react";
-import { getReputationApiResult, type ReputationApiDependencies } from "@/lib/api/reputation";
-import { createRequestId } from "@/lib/api/requestId";
-import type { PublicReputationScoreBand, PublicReputationState, ReputationApiListResult } from "@/types/api/reputation";
+
+import {
+  getReputationApiResult,
+  type ReputationApiDependencies,
+} from "@/lib/api/reputation";
+import type {
+  PublicReputationScoreBand,
+  PublicReputationState,
+  ReputationApiListResult,
+} from "@/types/api/reputation";
 import { Badge } from "@/components/dashboard/Badge";
-import { SectionEmpty, SectionError } from "@/components/dashboard/SectionStates";
-import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
+import {
+  SectionEmpty,
+  SectionError,
+} from "@/components/dashboard/SectionStates";
 
 function stateCopy(state: PublicReputationState): string {
   switch (state) {
@@ -40,30 +48,22 @@ function formatMs(value: number | null): string {
   return value === null ? "—" : `${value} ms`;
 }
 
-export async function ReputationSection(props?: {
+export async function ReputationSection({
+  dependencies,
+}: {
   dependencies?: ReputationApiDependencies;
-  result?: ReputationApiListResult;
-}) {
-  // Assign the correlation id here so the reference shown on failure is exactly
-  // the id in the matching structured server log entry.
-  const result = props?.result ?? await getReputationApiResult({
-    ...(props?.dependencies ?? {}),
-    requestId: createRequestId(),
-  });
+} = {}) {
+  const result = await getReputationApiResult(dependencies);
+
   return <ReputationSectionView result={result} />;
 }
 
-export function ReputationSectionView({ result }: { result: ReputationApiListResult }) {
+/** Pure render of a reputation list API result; contract-tested against canonical fixtures. */
+export function ReputationSectionView({
+  result,
+}: Readonly<{ result: ReputationApiListResult }>) {
   if (result.status !== 200) {
-    const { code, message, requestId } = result.body.error;
-    return (
-      <SectionError
-        area="reputation"
-        code={code}
-        message={message}
-        requestId={requestId}
-      />
-    );
+    return <SectionError message={result.body.error.message} />;
   }
 
   const { reputation, count } = result.body;
@@ -80,19 +80,36 @@ export function ReputationSectionView({ result }: { result: ReputationApiListRes
           className="rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-5"
         >
           <div className="flex items-start justify-between gap-3">
-            <h3 className="text-lg text-[var(--white)]" style={{ fontFamily: "var(--display)" }}>
-              {entry.anchor.name?.trim() ? entry.anchor.name : entry.anchor.slug}
+            <h3
+              className="text-lg text-[var(--white)]"
+              style={{ fontFamily: "var(--display)" }}
+            >
+              {entry.anchor.name}
             </h3>
-            <Badge tone={stateTone(entry.state)} label={stateCopy(entry.state)} />
+
+            <Badge
+              tone={stateTone(entry.state)}
+              label={stateCopy(entry.state)}
+            />
           </div>
 
           {entry.state === "established" && entry.score !== null ? (
             <div className="mt-4 flex items-center gap-3">
-              <span className="text-3xl text-[var(--white)]" style={{ fontFamily: "var(--display)" }}>
+              <span
+                className="text-3xl text-[var(--white)]"
+                style={{ fontFamily: "var(--display)" }}
+              >
                 {entry.score}
               </span>
+
               <span className="text-xs text-[var(--muted)]">/100</span>
-              {entry.scoreBand ? <Badge tone={bandTone(entry.scoreBand)} label={entry.scoreBand} /> : null}
+
+              {entry.scoreBand ? (
+                <Badge
+                  tone={bandTone(entry.scoreBand)}
+                  label={entry.scoreBand}
+                />
+              ) : null}
             </div>
           ) : (
             <p className="mt-4 text-xs text-[var(--muted)]">
@@ -104,7 +121,10 @@ export function ReputationSectionView({ result }: { result: ReputationApiListRes
 
           {entry.evidence ? (
             <p className="mt-3 text-xs text-[var(--muted)]">
-              Outcomes evaluated: <span className="text-[var(--white)]">{entry.evidence.outcomeCount}</span>
+              Outcomes evaluated:{" "}
+              <span className="text-[var(--white)]">
+                {entry.evidence.outcomeCount}
+              </span>
             </p>
           ) : null}
 
@@ -112,34 +132,53 @@ export function ReputationSectionView({ result }: { result: ReputationApiListRes
             <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[var(--ghost)] pt-3 text-xs text-[var(--muted)]">
               <div>
                 <dt>Fill rate 7d</dt>
-                <dd className="text-[var(--white)]">{formatMetric(entry.metrics.fillRate7d)}</dd>
+                <dd className="text-[var(--white)]">
+                  {formatMetric(entry.metrics.fillRate7d)}
+                </dd>
               </div>
+
               <div>
                 <dt>Fill rate 30d</dt>
-                <dd className="text-[var(--white)]">{formatMetric(entry.metrics.fillRate30d)}</dd>
+                <dd className="text-[var(--white)]">
+                  {formatMetric(entry.metrics.fillRate30d)}
+                </dd>
               </div>
+
               <div>
                 <dt>Fill rate 90d</dt>
-                <dd className="text-[var(--white)]">{formatMetric(entry.metrics.fillRate90d)}</dd>
+                <dd className="text-[var(--white)]">
+                  {formatMetric(entry.metrics.fillRate90d)}
+                </dd>
               </div>
+
               <div>
                 <dt>Settlement p50</dt>
-                <dd className="text-[var(--white)]">{formatMs(entry.metrics.settleP50Ms)}</dd>
+                <dd className="text-[var(--white)]">
+                  {formatMs(entry.metrics.settleP50Ms)}
+                </dd>
               </div>
+
               <div>
                 <dt>Settlement p95</dt>
-                <dd className="text-[var(--white)]">{formatMs(entry.metrics.settleP95Ms)}</dd>
+                <dd className="text-[var(--white)]">
+                  {formatMs(entry.metrics.settleP95Ms)}
+                </dd>
               </div>
+
               <div>
                 <dt>Slippage p50</dt>
-                <dd className="text-[var(--white)]">{formatMetric(entry.metrics.slippageP50)}</dd>
+                <dd className="text-[var(--white)]">
+                  {formatMetric(entry.metrics.slippageP50)}
+                </dd>
               </div>
             </dl>
           ) : null}
 
-          <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--muted)]">
-            Computed <EvidenceTimestamp value={entry.computedAt} />
-          </p>
+          {entry.computedAt ? (
+            <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--muted)]">
+              Computed {new Date(entry.computedAt).toLocaleString()}
+            </p>
+          ) : null}
         </article>
       ))}
     </div>

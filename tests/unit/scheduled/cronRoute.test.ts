@@ -42,7 +42,6 @@ test("authorized scheduled requests return only bounded JSON and preserve partia
     failed: 1,
     skipped: 0,
     failures: [{ phase: "PREPARATION", code: "LIVE_RATE_PREPARATION_FAILURE" }],
-    skippedSources: [],
   } });
   const response = await getScheduledRefreshResponse(
     new Request("http://localhost/api/internal/cron/refresh", {
@@ -84,9 +83,11 @@ test("fatal job failures are a safe 500 and the route stays GET-only dynamic", a
 function successfulRun(overrides: Partial<ScheduledRefreshResult> = {}): ScheduledRefreshResult {
   return Object.freeze({
     ok: true,
+    runId: "test-run-id",
     startedAt: "2026-08-31T16:00:00.000Z",
     completedAt: "2026-08-31T16:00:01.000Z",
-    rates: Object.freeze({ attempted: 1, succeeded: 1, failed: 0, skipped: 0, failures: [], skippedSources: [] }),
+    attempt: 1,
+    rates: Object.freeze({ attempted: 1, succeeded: 1, failed: 0, skipped: 0, failures: [] }),
     reputation: Object.freeze({ attempted: 3, succeeded: 3, failed: 0, failures: [] }),
     ...overrides,
   });

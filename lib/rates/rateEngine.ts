@@ -1,4 +1,13 @@
+import {
+  RATE_CAPTURE_SOURCE_TYPE,
+  SEP38_INDICATIVE_REQUEST_SHAPE_VERSION,
+} from "@/constants/rateProvenance";
 import { normalizeIndicativeRate, RateNormalizationError } from "@/lib/rates/normalize";
+import {
+  buildRateSnapshotProvenance,
+  mintRateCaptureRunId,
+  RateSnapshotProvenanceError,
+} from "@/lib/rates/provenance";
 import { persistRateSnapshot } from "@/lib/rates/snapshot";
 import type {
   RateCandidate,
@@ -15,9 +24,14 @@ export async function runRateEngine(
     quote: RateQuoteProvider;
     repository: RateSnapshotRepository;
     now?: () => Date;
-    configurationFingerprint?: string;
+    /**
+     * Capture-run identity persisted with every snapshot of this run. A
+     * fresh UUID is minted when omitted so each engine run is distinguishable.
+     */
+    captureRunId?: string;
   }>,
 ): Promise<RateEngineResult> {
+  const captureRunId = dependencies.captureRunId ?? mintRateCaptureRunId();
   const seen = new Set<string>();
   const snapshots: RateEngineResult["snapshots"][number][] = [];
   const failures: RateEngineFailure[] = [];
@@ -46,31 +60,42 @@ export async function runRateEngine(
     }
 
     let observation;
+    let provenance;
     try {
-      const normalized = normalizeIndicativeRate({
+      observation = normalizeIndicativeRate({
         anchorSlug: candidate.anchorSlug,
         corridor: candidate.corridor,
         request: candidate.request,
         quote,
         capturedAt: dependencies.now?.() ?? new Date(),
       });
-      observation = Object.freeze({
-        ...normalized,
-        ...(dependencies.configurationFingerprint !== undefined
-          ? { configurationFingerprint: dependencies.configurationFingerprint }
-          : {}),
-        ...(candidate.captureRunId ? { captureRunId: candidate.captureRunId } : {}),
+      // Capture-time provenance (#113): built here, from the candidate and
+      // observation actually used, so it is never reconstructed later. A
+      // candidate whose lineage cannot be recorded truthfully never becomes a
+      // snapshot row; it fails closed like a normalization error.
+      provenance = buildRateSnapshotProvenance({
+        captureRunId,
+        sourceType: RATE_CAPTURE_SOURCE_TYPE,
+        requestShapeVersion: SEP38_INDICATIVE_REQUEST_SHAPE_VERSION,
+        anchorSlug: candidate.anchorSlug,
+        corridorSlug: candidate.corridor.slug,
+        configurationDigest: candidate.configurationDigest,
+        capturedAt: observation.capturedAt,
       });
     } catch (error) {
       failures.push(engineFailure(
         candidate,
         "NORMALIZATION",
-        error instanceof RateNormalizationError ? error.code : "NORMALIZATION_FAILURE",
+        error instanceof RateNormalizationError
+          ? error.code
+          : error instanceof RateSnapshotProvenanceError
+            ? error.code
+            : "NORMALIZATION_FAILURE",
       ));
       continue;
     }
 
-    const persisted = await persistRateSnapshot(observation, dependencies.repository);
+    const persisted = await persistRateSnapshot(observation, provenance, dependencies.repository);
     if (!persisted.ok) {
       failures.push(engineFailure(candidate, "PERSISTENCE", persisted.code));
       continue;
@@ -79,6 +104,7 @@ export async function runRateEngine(
   }
 
   return Object.freeze({
+    captureRunId,
     totalCandidates: candidates.length,
     totalAttempted,
     succeeded: snapshots.length,
