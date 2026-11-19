@@ -24,7 +24,7 @@ Maintainer status is derived **only** from the PR author. Commit authors and com
 
 ### Maintainer-attested co-authors
 
-`Co-authored-by` trailers are free text that anyone can write. Addresses in `approvedCoauthorEmails` are accepted on any commit; that list is intentionally empty. Addresses in `maintainerAttestedCoauthorEmails` (currently `noreply@anthropic.com` and the maintainer's GitHub noreply address) are accepted for a specific commit only when all of the following hold:
+`Co-authored-by` trailers are free text that anyone can write. Addresses in `approvedCoauthorEmails` are accepted on any commit; that list is intentionally empty. Addresses in `maintainerAttestedCoauthorEmails` (currently only the maintainer's GitHub noreply address, `141873116+aboyeji-isaac@users.noreply.github.com`) are accepted for a specific commit only when all of the following hold:
 
 1. the PR author is a configured maintainer;
 2. the PR head repository equals the base repository, so only users with write access could have pushed the commit;
@@ -32,6 +32,12 @@ Maintainer status is derived **only** from the PR author. Commit authors and com
 4. the commit's GitHub-mapped committer is a maintainer or a verified `web-flow` committer.
 
 If any of this metadata is missing, the address is reported with the failed condition (fail closed). Conditions 3 and 4 only narrow acceptance; they never grant maintainer status.
+
+### AI co-author attribution
+
+StellarCore does not credit AI tools as co-authors. Claude Code's automatic attribution is disabled for this repository, and AI tool addresses such as `noreply@anthropic.com` are not in any guard list, attested or otherwise. Do not add them to obtain a passing result.
+
+Existing commits are not rewritten. Historical commits that carry an AI `Co-authored-by` trailer are validated like any other co-author and are reported as unexpected. Maintainer PRs #563 and #609–#613 each contain one such trailer, as does the first commit of PR #614. A future PR that includes those commits, such as a branch synchronization, reports them. Treat that as a known, explained finding and resolve it with the maintainer's normal administrative decision rather than an allowlist entry.
 
 ### GitHub web-flow committer
 

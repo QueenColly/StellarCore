@@ -285,14 +285,16 @@ test("deleted-comment webhook payload preserves an identity absent from the curr
 
 const repo = { full_name: "Aboyeji-Isaac/StellarCore" };
 const NOW = Date.parse("2026-11-19T00:00:00.000Z");
-const ATTESTED = "noreply@anthropic.com";
 const MAINTAINER_NOREPLY = "141873116+aboyeji-isaac@users.noreply.github.com";
+// The only maintainer-attested co-author address. AI tool addresses are not attested.
+const ATTESTED = MAINTAINER_NOREPLY;
+const CLAUDE_ADDRESS = "noreply@anthropic.com";
 const policyConfig = {
   maintainers: ["Aboyeji-Isaac"],
   approvedBots: [],
   approvedCommitEmails: [],
   approvedCoauthorEmails: [],
-  maintainerAttestedCoauthorEmails: [ATTESTED, MAINTAINER_NOREPLY],
+  maintainerAttestedCoauthorEmails: [MAINTAINER_NOREPLY],
   verifiedWebFlowCommitter: { login: "web-flow", email: "noreply@github.com" },
   approvedReviewerTeams: [],
   exceptions: [],
@@ -304,7 +306,7 @@ function maintainerCommit(overrides = {}) {
     author: { login: "Aboyeji-Isaac" },
     committer: { login: "Aboyeji-Isaac" },
     commit: {
-      message: `security: change\n\nCo-authored-by: Claude <${ATTESTED}>`,
+      message: `security: change\n\nCo-authored-by: Aboyeji-Isaac <${ATTESTED}>`,
       committer: { email: MAINTAINER_NOREPLY },
       verification: { verified: false, reason: "unsigned" },
     },
@@ -512,16 +514,44 @@ test("invalid guard configuration fails closed", () => {
 test("repository configuration keeps attested addresses out of the global co-author list", async () => {
   const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
   assert.deepEqual(repoConfig.approvedCoauthorEmails, []);
-  assert.deepEqual(repoConfig.maintainerAttestedCoauthorEmails, [ATTESTED, MAINTAINER_NOREPLY]);
+  assert.deepEqual(repoConfig.maintainerAttestedCoauthorEmails, [MAINTAINER_NOREPLY]);
+  // AI co-author attribution is not approved anywhere in the guard configuration.
+  const everyString = JSON.stringify(repoConfig).toLowerCase();
+  assert.ok(!everyString.includes("anthropic"), "no AI tool address may be approved");
   assert.deepEqual(repoConfig.verifiedWebFlowCommitter, { login: "web-flow", email: "noreply@github.com" });
   assert.deepEqual(repoConfig.maintainers, ["Aboyeji-Isaac"]);
   assert.deepEqual(repoConfig.approvedBots, []);
   assert.deepEqual(repoConfig.exceptions, []);
 });
 
-test("historical shapes: maintainer AI-assisted PR passes; history-sync PR fails only on outside identities", () => {
-  // Shape of #613: maintainer-authored, local commits, Claude co-author trailer.
-  assert.equal(evaluate({ commits: [maintainerCommit(), maintainerCommit({ sha: "3333333ccccccc", commit: { message: "Merge development" } })] }).status, "pass");
+test("AI co-author attribution is subject to normal validation and is never attested", async () => {
+  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
+  const claudeTrailer = `security: change\n\nCo-authored-by: Claude Opus 5.5 <${CLAUDE_ADDRESS}>`;
+  // Even on a fully attested maintainer commit in a maintainer-authored same-repository PR.
+  const result = evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: claudeTrailer } })] }), repoConfig, NOW);
+  assert.equal(result.status, "failure");
+  assert.deepEqual(result.findings, [`Unexpected email "${CLAUDE_ADDRESS}" in Co-authored-by trailer (1111111).`]);
+  // Case and display-name variants are the same address.
+  const upper = evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: `x\n\nCo-authored-by: Bot <NOREPLY@ANTHROPIC.COM>` } })] }), repoConfig, NOW);
+  assert.equal(upper.status, "failure");
+  // The same maintainer commit without AI attribution passes.
+  assert.equal(evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: "security: change" } })] }), repoConfig, NOW).status, "pass");
+});
+
+test("historical shapes: AI-attributed maintainer PR fails only on the AI trailer; history-sync PR fails only on outside identities", async () => {
+  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
+  // Shape of #609-#613: maintainer-authored, local commits, one Claude co-author trailer each.
+  const aiAttributed = evaluateParticipantData(maintainerPr({
+    commits: [
+      maintainerCommit({ commit: { message: `security: change\n\nCo-authored-by: Claude Opus 5.5 <${CLAUDE_ADDRESS}>` } }),
+      maintainerCommit({ sha: "3333333ccccccc", commit: { message: "Merge development" } }),
+    ],
+  }), repoConfig, NOW);
+  assert.equal(aiAttributed.status, "failure");
+  assert.equal(aiAttributed.findings.length, 1);
+  assert.ok(aiAttributed.findings[0].includes(CLAUDE_ADDRESS));
+  // Shape of #551: maintainer-authored, no AI attribution.
+  assert.equal(evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: "security: port guard" } }), webFlowCommit()] }), repoConfig, NOW).status, "pass");
   // Shape of #605: outside author, GitHub-signed web-flow committer, outside and maintainer co-author trailers.
   const result = evaluate({
     commits: [webFlowCommit({ author: "outside-author", message: `Fix\n\nCo-authored-by: X <x@example.test>\nCo-authored-by: Me <${MAINTAINER_NOREPLY}>` })],
