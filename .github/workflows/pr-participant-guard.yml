@@ -1,15 +1,13 @@
 name: PR Participant Guard
 
+# Only pull_request_target: it always runs this trusted default-branch
+# definition. Review and review-comment events would run the pull request's own
+# copy of this workflow, and issue_comment results never attach to the pull
+# request, so neither is used. Re-run the latest job to re-evaluate new comments.
 on:
   pull_request_target:
     branches: [development, main]
     types: [opened, reopened, synchronize, ready_for_review, edited, review_requested, review_request_removed]
-  issue_comment:
-    types: [created, edited, deleted]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
 
 permissions:
   contents: read
@@ -17,13 +15,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: pr-participant-guard-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  group: pr-participant-guard-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   participant-guard:
     name: PR Participant Guard
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request != null
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,5 +39,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/security/check-pr-participants.mjs
