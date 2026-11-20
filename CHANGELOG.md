@@ -11,6 +11,7 @@ with your pull request.
 
 ### Added
 
+- End-to-end evidence provenance walkthrough documenting the journey from reviewed registry configuration to dashboard-rendered rate observation (#597).
 - Public API rate limiting, current API reference, reputation methodology documentation, and reputation property tests (#22, #24, #25, #26).
 - Anchor detail UI, median property tests, transfer-outcome webhook schema RFC, and SEP-38 USDC→BRL source research (#5, #7, #18, #21).
 - Public API reference and reputation methodology docs, verified public-route rate limiting, and reputation property coverage recovered from PR #83 (#22, #24, #25, #26).
