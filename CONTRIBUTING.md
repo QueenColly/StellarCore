@@ -10,9 +10,23 @@ Follow the setup instructions in the README's [Getting Started](README.md#gettin
 section. Do not request direct write access to the repository; fork it instead
 and work from your fork.
 
-## Branches
+## Branch Workflow
 
-Create a focused branch from `main` using one of these prefixes:
+StellarCore uses three long-lived branches, and changes move in one direction
+only:
+
+| Branch | Purpose | Who opens pull requests into it |
+| --- | --- | --- |
+| `contributions` | Community contributions and new features | Contributors |
+| `development` | Staging, integration testing, and release preparation | Maintainers promoting reviewed work |
+| `main` | Production only | Maintainers |
+
+`contributions` → `development` → `main`. Contributors target **`contributions`**.
+Only reviewed and approved changes are promoted from `contributions` into
+`development`, and only release-ready work is promoted from `development` into
+`main`.
+
+Create a focused branch from `contributions` using one of these prefixes:
 
 - `feat/` for a new feature
 - `fix/` for a bug fix
@@ -31,7 +45,7 @@ npm run lint
 npm test
 ```
 
-Open a pull request from your fork's branch into `main`. Describe what changed,
+Open a pull request from your fork's branch into `contributions`. Describe what changed,
 include relevant tests and evidence, reference the issue being resolved when
 applicable (for example `Closes #12`), and add a changelog entry under
 `Unreleased` when applicable — see [Changelog](#changelog) below.
@@ -54,11 +68,30 @@ under the `Unreleased` section in the same pull request:
 Small typo fixes and changes that are purely internal to CI or tooling do not
 need an entry.
 
-## Protected Main Branch
+## Branch Protection and Required Checks
 
-The `main` branch is protected. All changes must go through a pull request and
-receive approval from at least one maintainer. Direct pushes to `main` are
-rejected.
+Every branch in the workflow is maintained through reviewed pull requests; no
+contributor pushes directly to `contributions`, `development`, or `main`.
+
+Pull requests into `contributions` and `development` must pass the same two
+required status checks before they can merge:
+
+- **`Scan untrusted PR changes`** — a read-only malware scan of the pull
+  request's metadata, file paths, sizes, and added patch lines. It never checks
+  out, installs, builds, or runs contributor code.
+- **`Lint, typecheck, test, build`** — lint, `tsc --noEmit`, the full test
+  suite, the configuration/SQL/compatibility audits, and a production build.
+
+**`PR Participant Guard`** also runs on these pull requests. It is advisory, not
+a required check. It reports authenticated human GitHub accounts that are
+neither a maintainer nor an assignee of an issue the pull request links with a
+closing keyword, so reference the issue you are assigned to (for example
+`Closes #12`). Bot and AI-agent accounts are permitted automatically, and you
+are never restricted by which coding agent you use — see
+[docs/pr-participant-guard.md](docs/pr-participant-guard.md).
+
+Path-specific audit workflows additionally run when a pull request touches the
+areas they cover.
 
 ## Evidence Integrity
 

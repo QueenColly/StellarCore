@@ -887,7 +887,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch protection and pull reques
 ### Code Contributions
 
 - Fork the repo
-- Create a branch off `main`
+- Create a branch off `contributions` (see [CONTRIBUTING.md](CONTRIBUTING.md#branch-workflow)
+  for the `contributions` → `development` → `main` workflow)
 - Write tests for all new logic
 - Ensure `npx tsc --noEmit` and `npm test` pass
 - Open a PR with a clear description of the change

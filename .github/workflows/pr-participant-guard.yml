@@ -6,7 +6,7 @@ name: PR Participant Guard
 # request, so neither is used. Re-run the latest job to re-evaluate new comments.
 on:
   pull_request_target:
-    branches: [development, main]
+    branches: [contributions, development, main]
     types: [opened, reopened, synchronize, ready_for_review, edited, review_requested, review_request_removed]
 
 permissions:
