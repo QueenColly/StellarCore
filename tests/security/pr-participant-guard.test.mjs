@@ -441,7 +441,7 @@ test("the repository configuration makes real maintainer and contributor shapes 
 
 test("workflow is read-only, runs only trusted pull_request_target events, and uses default-branch code", async () => {
   const workflow = await readFile(new URL("../../.github/workflows/pr-participant-guard.yml", import.meta.url), "utf8");
-  assert.match(workflow, /\non:\n  pull_request_target:\n    branches: \[development, main\]\n    types: \[opened, reopened, synchronize, ready_for_review, edited, review_requested, review_request_removed\]\n\n/);
+  assert.match(workflow, /\non:\n  pull_request_target:\n    branches: \[contributions, development, main\]\n    types: \[opened, reopened, synchronize, ready_for_review, edited, review_requested, review_request_removed\]\n\n/);
   // Review events run the PR's own copy of the workflow; issue_comment results never attach to the PR.
   assert.doesNotMatch(workflow, /^\s*issue_comment:/m);
   assert.doesNotMatch(workflow, /^\s*pull_request_review:/m);

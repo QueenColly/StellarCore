@@ -7,9 +7,9 @@ name: CI
 # required only by prisma.config.ts for client generation.
 on:
   pull_request:
-    branches: [development]
+    branches: [contributions, development]
   push:
-    branches: [development]
+    branches: [contributions, development]
 
 permissions:
   contents: read
