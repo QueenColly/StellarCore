@@ -5,203 +5,438 @@ import test from "node:test";
 import {
   evaluateParticipantData,
   parseClosingIssueNumbers,
-  parseCoauthorEmails,
-  parseCoauthorTrailers,
   readAllPages,
 } from "../../scripts/security/check-pr-participants.mjs";
 
+const NOW = Date.parse("2026-11-20T00:00:00.000Z");
+const MAINTAINER = "Aboyeji-Isaac";
+const MAINTAINER_ID = 141873116;
+const WEB_FLOW_EMAIL = "noreply@github.com";
+const CLAUDE_ADDRESS = "noreply@anthropic.com";
+const CODEBUFF_ADDRESS = "noreply@codebuff.com";
+const COPILOT_ADDRESS = "223556219+copilot@users.noreply.github.com";
+
 const config = {
-  maintainers: ["Aboyeji-Isaac"],
-  approvedBots: ["release-bot[bot]"],
-  approvedCommitEmails: ["assigned@example.test"],
-  approvedCoauthorEmails: ["maintainer@example.test"],
-  approvedReviewerTeams: ["core-reviewers"],
+  maintainers: [MAINTAINER],
+  verifiedWebFlowCommitter: { login: "web-flow", email: WEB_FLOW_EMAIL },
   exceptions: [
     { login: "temporary-reviewer", reason: "approved incident review", expiresAt: "2099-01-01T00:00:00.000Z" },
     { login: "expired-reviewer", reason: "old exception", expiresAt: "2020-01-01T00:00:00.000Z" },
   ],
 };
 
-function fixture(overrides = {}) {
+function human(login, id = 1000) {
+  return { login, id, type: "User" };
+}
+
+function bot(login, id = 2000) {
+  return { login, id, type: "Bot" };
+}
+
+function commit({ sha = "1111111aaaaaaa", author = human(MAINTAINER, MAINTAINER_ID), committer = human(MAINTAINER, MAINTAINER_ID), message = "security: change", committerEmail = `${MAINTAINER_ID}+aboyeji-isaac@users.noreply.github.com`, verification = { verified: false, reason: "unsigned" } } = {}) {
+  return { sha, author, committer, commit: { message, committer: { email: committerEmail }, verification } };
+}
+
+function webFlowCommit({ verified = true, reason = "valid", email = WEB_FLOW_EMAIL, author = human(MAINTAINER, MAINTAINER_ID), message = "Merge pull request #1" } = {}) {
   return {
-    pull: {
-      body: "Implements the guard. Closes #42",
-      user: { login: "assigned-contributor" },
-      requested_reviewers: [],
-      requested_teams: [],
-    },
+    sha: "2222222bbbbbbb",
+    author,
+    committer: { login: "web-flow", id: 19864447, type: "User" },
+    commit: { message, committer: { email }, verification: { verified, reason } },
+  };
+}
+
+// A maintainer-authored pull request with no linked issue (maintainer mode).
+function maintainerPr(overrides = {}) {
+  return {
+    pull: { body: "Maintenance change without an issue.", user: human(MAINTAINER, MAINTAINER_ID), requested_reviewers: [], requested_teams: [] },
     comments: [],
     reviews: [],
     reviewComments: [],
-    commits: [
-      {
-        sha: "abcdef012345",
-        author: { login: "assigned-contributor" },
-        committer: { login: "assigned-contributor" },
-        commit: { message: "feat: implement guard" },
-      },
-    ],
+    commits: [commit()],
+    issueEvents: [],
+    linkedIssues: [],
+    ...overrides,
+  };
+}
+
+// A contributor pull request that links an issue the contributor is assigned to.
+function contributorPr(overrides = {}) {
+  return {
+    pull: { body: "Implements the feature. Closes #42", user: human("assigned-contributor", 3001), requested_reviewers: [], requested_teams: [] },
+    comments: [],
+    reviews: [],
+    reviewComments: [],
+    commits: [commit({ author: human("assigned-contributor", 3001), committer: human("assigned-contributor", 3001) })],
     issueEvents: [],
     linkedIssues: [{ number: 42, assignees: [{ login: "assigned-contributor" }] }],
     ...overrides,
   };
 }
 
+const evaluateMaintainer = (overrides) => evaluateParticipantData(maintainerPr(overrides), config, NOW);
+const evaluateContributor = (overrides) => evaluateParticipantData(contributorPr(overrides), config, NOW);
+
 test("parses closing issue references and deduplicates them", () => {
-  assert.deepEqual(
-    parseClosingIssueNumbers("Fixes #42; closes #42 and Resolves https://github.com/org/repo/issues/17"),
-    [42, 17],
-  );
+  assert.deepEqual(parseClosingIssueNumbers("Closes #12 and fixes #13, resolves #12"), [12, 13]);
+  assert.deepEqual(parseClosingIssueNumbers("closed https://github.com/org/repo/issues/77"), [77]);
+  assert.deepEqual(parseClosingIssueNumbers("Related to #99"), []);
+  assert.deepEqual(parseClosingIssueNumbers(""), []);
 });
 
-test("parses Co-authored-by email trailers case-insensitively", () => {
-  assert.deepEqual(
-    parseCoauthorEmails("feat: sample\n\nCo-authored-by: Maintainer <MAINTAINER@example.test>\nCo-authored-by: Stranger <stranger@example.test>"),
-    ["maintainer@example.test", "stranger@example.test"],
-  );
+// 1. Authorized maintainer.
+
+test("maintainer-authored pull request without a linked issue passes", () => {
+  const result = evaluateMaintainer();
+  assert.equal(result.status, "pass");
+  assert.equal(result.mode, "maintainer");
+  assert.deepEqual(result.findings, []);
+  assert.deepEqual(result.uncertainties, []);
+  assert.equal(result.unauthorizedHumanCount, 0);
 });
 
-test("assigned contributor and configured maintainer pass", () => {
-  const result = evaluateParticipantData(fixture({
-    comments: [{ user: { login: "Aboyeji-Isaac" } }],
-    reviews: [{ user: { login: "assigned-contributor" } }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
+test("the maintainer is authorized in every participation role", () => {
+  const maintainer = human(MAINTAINER, MAINTAINER_ID);
+  const result = evaluateMaintainer({
+    comments: [{ user: maintainer }],
+    reviews: [{ user: maintainer }],
+    reviewComments: [{ user: maintainer }],
+    commits: [commit(), webFlowCommit()],
+    pull: { body: "Maintenance change.", user: maintainer, requested_reviewers: [maintainer], requested_teams: [] },
+    issueEvents: [{ event: "review_requested", actor: maintainer, requested_reviewer: maintainer }],
+  });
   assert.equal(result.status, "pass");
   assert.deepEqual(result.findings, []);
 });
 
-test("explicitly approved bot and reviewer team pass", () => {
-  const result = evaluateParticipantData(fixture({
-    comments: [{ user: { login: "release-bot[bot]" } }],
-    issueEvents: [{
-      event: "review_requested",
-      actor: { login: "Aboyeji-Isaac" },
-      requested_team: { slug: "core-reviewers" },
-    }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
+test("maintainer recognition is case-insensitive and comes only from the authenticated login", () => {
+  assert.equal(evaluateParticipantData(maintainerPr({
+    pull: { body: "No issue.", user: human("aboyeji-isaac", MAINTAINER_ID), requested_reviewers: [], requested_teams: [] },
+  }), config, NOW).status, "pass");
+  // A commit identity can never make a pull request maintainer-authored.
+  const impostor = evaluateParticipantData(maintainerPr({
+    pull: { body: "No issue.", user: human("outsider", 9001), requested_reviewers: [], requested_teams: [] },
+    commits: [commit()],
+  }), config, NOW);
+  assert.equal(impostor.status, "inconclusive");
+  assert.match(impostor.findings[0], /No closing reference to an issue was found/);
+});
+
+// 2. Assigned contributors.
+
+test("a contributor assigned to the linked issue passes", () => {
+  const result = evaluateContributor();
   assert.equal(result.status, "pass");
+  assert.equal(result.mode, "linked-issue");
+  assert.deepEqual(result.assignedContributors, ["assigned-contributor"]);
 });
 
-test("unexpected conversation commenter and submitted reviewer fail", () => {
-  const result = evaluateParticipantData(fixture({
-    comments: [{ user: { login: "unexpected-person" } }],
-    reviews: [{ user: { login: "another-person" } }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  assert.equal(result.status, "failure");
-  assert.ok(result.findings.some((finding) => finding.includes('unexpected-person') && finding.includes("conversation comment")));
-  assert.ok(result.findings.some((finding) => finding.includes('another-person') && finding.includes("submitted review")));
+test("assignees of every linked issue are authorized, and the maintainer may join", () => {
+  const result = evaluateContributor({
+    pull: { body: "Closes #42, fixes #43", user: human("assigned-contributor", 3001), requested_reviewers: [], requested_teams: [] },
+    comments: [{ user: human(MAINTAINER, MAINTAINER_ID) }, { user: human("second-assignee", 3002) }],
+    reviews: [{ user: human(MAINTAINER, MAINTAINER_ID) }],
+    linkedIssues: [
+      { number: 42, assignees: [{ login: "assigned-contributor" }] },
+      { number: 43, assignees: [{ login: "second-assignee" }] },
+    ],
+  });
+  assert.equal(result.status, "pass");
+  assert.deepEqual(result.assignedContributors, ["assigned-contributor", "second-assignee"]);
 });
 
-test("unexpected inline reviewer and commit author/committer fail", () => {
-  const result = evaluateParticipantData(fixture({
-    reviewComments: [{ user: { login: "inline-stranger" } }],
-    commits: [{
-      sha: "0123456789ab",
-      author: { login: "commit-author" },
-      committer: { login: "commit-committer" },
-      commit: { message: "fix: something" },
-    }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  assert.equal(result.status, "failure");
-  for (const identity of ["inline-stranger", "commit-author", "commit-committer"]) {
-    assert.ok(result.findings.some((finding) => finding.includes(identity)), identity);
+// 3. Unrestricted agents and bots.
+
+test("any GitHub account of type Bot is permitted without individual approval", () => {
+  const bots = [bot("github-actions[bot]", 41898282), bot("drips-wave[bot]", 253720017), bot("Copilot", 223556219), bot("never-seen-before[bot]", 999999)];
+  for (const account of bots) {
+    const result = evaluateMaintainer({
+      comments: [{ user: account }],
+      reviews: [{ user: account }],
+      reviewComments: [{ user: account }],
+      commits: [commit({ sha: "4444444dddddd", author: account, committer: account })],
+      pull: { body: "Maintenance change.", user: human(MAINTAINER, MAINTAINER_ID), requested_reviewers: [account], requested_teams: [] },
+      issueEvents: [{ event: "review_requested", actor: account, requested_reviewer: account }],
+    });
+    assert.equal(result.status, "pass", `${account.login}: ${JSON.stringify(result.findings)}`);
+    assert.deepEqual(result.uncertainties, [], account.login);
+    assert.ok(result.machineRecords >= 7, `${account.login} machineRecords=${result.machineRecords}`);
   }
 });
 
-test("unexpected Co-authored-by email fails unless explicitly approved", () => {
-  const result = evaluateParticipantData(fixture({
-    commits: [{
-      sha: "abcdef012345",
-      author: { login: "assigned-contributor" },
-      committer: { login: "assigned-contributor" },
-      commit: { message: "feat: shared\n\nCo-authored-by: Stranger <stranger@example.test>" },
-    }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  assert.equal(result.status, "failure");
-  assert.ok(result.findings.some((finding) => finding.includes("stranger@example.test")));
+test("bot participation is permitted in contributor pull requests too", () => {
+  const result = evaluateContributor({ comments: [{ user: bot("drips-wave[bot]", 253720017) }] });
+  assert.equal(result.status, "pass");
+  assert.equal(result.machineRecords, 1);
 });
 
-test("review requested and removed events inspect both requester and target", () => {
-  const result = evaluateParticipantData(fixture({
-    issueEvents: [
-      { event: "review_requested", actor: { login: "Aboyeji-Isaac" }, requested_reviewer: { login: "unexpected-reviewer" } },
-      { event: "review_request_removed", actor: { login: "assigned-contributor" }, requested_reviewer: { login: "removed-unexpected-reviewer" } },
+test("a configured verified web-flow committer is permitted; an unverified one is an uncertainty, not a human", () => {
+  assert.equal(evaluateMaintainer({ commits: [webFlowCommit()] }).status, "pass");
+
+  for (const [broken, reason] of [
+    [webFlowCommit({ verified: false, reason: "unsigned" }), "valid verified GitHub signature"],
+    [webFlowCommit({ verified: true, reason: "expired_key" }), "valid verified GitHub signature"],
+    [webFlowCommit({ email: "attacker@example.test" }), "does not match the approved GitHub web-flow address"],
+  ]) {
+    const result = evaluateMaintainer({ commits: [broken] });
+    assert.equal(result.status, "pass", JSON.stringify(result.findings));
+    assert.equal(result.unauthorizedHumanCount, 0);
+    assert.ok(result.uncertainties.some((note) => note.includes("web-flow") && note.includes(reason)), `${reason}: ${JSON.stringify(result.uncertainties)}`);
+  }
+
+  // web-flow outside the committer role is still evaluated as an ordinary account.
+  const asAuthor = evaluateMaintainer({ commits: [webFlowCommit({ author: { login: "web-flow", id: 19864447, type: "User" } })] });
+  assert.equal(asAuthor.status, "failure");
+  assert.equal(asAuthor.unauthorizedHumanCount, 1);
+  // A verified web-flow committer never excuses the commit author.
+  const outsideAuthor = evaluateMaintainer({ commits: [webFlowCommit({ author: human("outside-author", 7001) })] });
+  assert.equal(outsideAuthor.status, "failure");
+  assert.equal(outsideAuthor.findings.length, 1);
+  assert.ok(outsideAuthor.findings[0].includes("outside-author"));
+});
+
+// 4. Co-author trailers are not participants.
+
+test("co-author trailers, including AI agent attribution, are never treated as participants", () => {
+  const messages = [
+    `security: change\n\nCo-authored-by: Claude Opus 5.5 <${CLAUDE_ADDRESS}>`,
+    `security: change\n\nCo-authored-by: Codebuff <${CODEBUFF_ADDRESS}>`,
+    `security: change\n\nCo-authored-by: Copilot <${COPILOT_ADDRESS}>`,
+    "security: change\n\nCo-authored-by: chokpala <your_email_used_on_platform>",
+    "security: change\n\n  co-authored_By : Someone <someone@example.test> (pairing)",
+    `security: change\n\nCo-authored-by: A <a@example.test>\nCo-authored-by: B <b@example.test>`,
+  ];
+  for (const message of messages) {
+    const result = evaluateMaintainer({ commits: [commit({ message })] });
+    assert.equal(result.status, "pass", `${message}: ${JSON.stringify(result.findings)}`);
+    assert.deepEqual(result.findings, [], message);
+    assert.deepEqual(result.uncertainties, [], message);
+  }
+});
+
+test("contributors are not restricted by which coding agent their commits credit", () => {
+  const result = evaluateContributor({
+    commits: [commit({
+      author: human("assigned-contributor", 3001),
+      committer: human("assigned-contributor", 3001),
+      message: `feat: add feature\n\nCo-authored-by: Claude <${CLAUDE_ADDRESS}>\nCo-authored-by: Copilot <${COPILOT_ADDRESS}>`,
+    })],
+  });
+  assert.equal(result.status, "pass");
+  assert.deepEqual(result.findings, []);
+});
+
+// 5. Unauthorized humans, deduplicated per authenticated account.
+
+test("an unauthorized human is reported once, however many records they produce", () => {
+  const stranger = human("Stranger", 8001);
+  const result = evaluateMaintainer({
+    comments: [{ user: stranger }],
+    reviews: [{ user: stranger }],
+    commits: [
+      commit({ sha: "aaaaaaa1111111", author: stranger, committer: stranger }),
+      commit({ sha: "bbbbbbb2222222", author: stranger, committer: stranger }),
+      commit({ sha: "ccccccc3333333", author: stranger, committer: stranger }),
     ],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
+  });
   assert.equal(result.status, "failure");
-  assert.ok(result.findings.some((finding) => finding.includes("unexpected-reviewer")));
-  assert.ok(result.findings.some((finding) => finding.includes("removed-unexpected-reviewer")));
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.unauthorizedHumanCount, 1);
+  const [finding] = result.findings;
+  assert.ok(finding.startsWith('Unauthorized human participant "Stranger" (account 8001)'), finding);
+  assert.ok(finding.includes("neither a configured maintainer nor an assignee of a linked issue"), finding);
+  assert.ok(/and \d+ further records/.test(finding), finding);
 });
 
-test("reviewer-change webhook payload is checked immediately", () => {
-  const requested = evaluateParticipantData(fixture({
-    eventPayload: {
-      action: "review_requested",
-      sender: { login: "unexpected-requester" },
-      requested_reviewer: { login: "unexpected-reviewer" },
-    },
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  assert.equal(requested.status, "failure");
-  assert.ok(requested.findings.some((finding) => finding.includes("unexpected-requester")));
-  assert.ok(requested.findings.some((finding) => finding.includes("unexpected-reviewer")));
-
-  const removed = evaluateParticipantData(fixture({
-    eventPayload: {
-      action: "review_request_removed",
-      sender: { login: "assigned-contributor" },
-      requested_team: { slug: "unapproved-team" },
-    },
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  assert.equal(removed.status, "failure");
-  assert.ok(removed.findings.some((finding) => finding.includes("unapproved-team")));
-});
-
-test("current requested reviewer is included even if no timeline event is present", () => {
-  const result = evaluateParticipantData(fixture({
-    pull: {
-      body: "Closes #42",
-      user: { login: "assigned-contributor" },
-      requested_reviewers: [{ login: "unexpected-reviewer" }],
-      requested_teams: [],
-    },
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
+test("distinct unauthorized humans are counted distinctly", () => {
+  const result = evaluateMaintainer({
+    comments: [{ user: human("first-stranger", 8002) }, { user: human("second-stranger", 8003) }],
+  });
   assert.equal(result.status, "failure");
-  assert.ok(result.findings.some((finding) => finding.includes("currently requested reviewer")));
+  assert.equal(result.unauthorizedHumanCount, 2);
+  assert.equal(result.findings.length, 2);
 });
 
-test("active documented exception passes but expired exception does not", () => {
-  const active = evaluateParticipantData(fixture({
-    comments: [{ user: { login: "temporary-reviewer" } }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  const expired = evaluateParticipantData(fixture({
-    comments: [{ user: { login: "expired-reviewer" } }],
-  }), config, Date.parse("2026-10-22T00:00:00.000Z"));
-  assert.equal(active.status, "pass");
-  assert.equal(expired.status, "failure");
+test("case variants of one account are a single participant", () => {
+  const result = evaluateMaintainer({
+    comments: [{ user: human("Stranger", 8001) }, { user: human("stranger", 8001) }],
+  });
+  assert.equal(result.unauthorizedHumanCount, 1);
 });
 
-test("missing linked issue or missing issue assignment fails closed as inconclusive", () => {
-  const noIssue = evaluateParticipantData(fixture({
-    pull: { body: "A change without issue reference", user: { login: "assigned-contributor" }, requested_reviewers: [] },
-  }), config);
-  assert.equal(noIssue.status, "inconclusive");
-
-  const unassigned = evaluateParticipantData(fixture({
-    linkedIssues: [{ number: 42, assignees: [] }],
-  }), config);
-  assert.equal(unassigned.status, "inconclusive");
+test("an unassigned human in a contributor pull request fails", () => {
+  const result = evaluateContributor({
+    commits: [commit({ author: human("unassigned-helper", 8004), committer: human("unassigned-helper", 8004) })],
+  });
+  assert.equal(result.status, "failure");
+  assert.equal(result.findings.length, 1);
+  assert.ok(result.findings[0].includes("unassigned-helper"));
 });
 
-test("incomplete linked issue response fails closed as inconclusive", () => {
-  const result = evaluateParticipantData(fixture({ linkedIssues: [] }), config);
+test("new unauthorized participation turns a passing result into a failure", () => {
+  assert.equal(evaluateContributor().status, "pass");
+  assert.equal(evaluateContributor({ comments: [{ user: human("newcomer", 8005) }] }).status, "failure");
+});
+
+test("an active documented exception passes but an expired one does not", () => {
+  assert.equal(evaluateMaintainer({ comments: [{ user: human("temporary-reviewer", 8006) }] }).status, "pass");
+  assert.equal(evaluateMaintainer({ comments: [{ user: human("expired-reviewer", 8007) }] }).status, "failure");
+  for (const broken of [{ login: "x" }, { login: "x", reason: "r" }, { login: "x", reason: "r", expiresAt: "not-a-date" }]) {
+    const result = evaluateParticipantData(maintainerPr({ comments: [{ user: human("x", 8008) }] }), { ...config, exceptions: [broken] }, NOW);
+    assert.equal(result.status, "failure", JSON.stringify(broken));
+  }
+});
+
+// 6. Missing issue references and incomplete linked-issue data.
+
+test("a contributor pull request without a closing reference is inconclusive", () => {
+  const result = evaluateParticipantData(contributorPr({
+    pull: { body: "Related to #42 only.", user: human("assigned-contributor", 3001), requested_reviewers: [], requested_teams: [] },
+    linkedIssues: [],
+  }), config, NOW);
   assert.equal(result.status, "inconclusive");
+  assert.match(result.findings[0], /No closing reference to an issue was found/);
 });
 
-test("new unexpected participation changes a previously passing result to failure", () => {
-  assert.equal(evaluateParticipantData(fixture(), config).status, "pass");
-  assert.equal(evaluateParticipantData(fixture({
-    comments: [{ user: { login: "new-unexpected-participant" } }],
-  }), config).status, "failure");
+test("missing assignment or incomplete linked issue data is inconclusive", () => {
+  assert.equal(evaluateContributor({ linkedIssues: [{ number: 42, assignees: [] }] }).status, "inconclusive");
+  assert.equal(evaluateContributor({ linkedIssues: [{ number: 42, assignees: null }] }).status, "inconclusive");
+  assert.equal(evaluateContributor({ linkedIssues: [] }).status, "inconclusive");
+  assert.match(evaluateContributor({ linkedIssues: [] }).findings[0], /Linked issue data is missing for: #42/);
+});
+
+// 7. Ambiguous identities are non-failing uncertainties.
+
+test("an unmapped commit author or committer is an uncertainty, never an invented human", () => {
+  const result = evaluateMaintainer({
+    commits: [{
+      sha: "5555555eeeeee",
+      author: null,
+      committer: null,
+      commit: { message: "security: change", author: { email: "stranger@example.test" }, committer: { email: "stranger@example.test" } },
+    }],
+  });
+  assert.equal(result.status, "pass");
+  assert.equal(result.unauthorizedHumanCount, 0);
+  assert.equal(result.uncertainties.length, 2);
+  assert.ok(result.uncertainties.every((note) => note.includes("5555555") && note.includes("not mapped to a GitHub account")));
+  assert.ok(!JSON.stringify(result.uncertainties).includes("stranger@example.test"), "an unauthenticated email is not reported as an identity");
+});
+
+test("an unrecognized or missing account type is an uncertainty", () => {
+  for (const type of [undefined, null, "Organization", "Mannequin"]) {
+    const result = evaluateMaintainer({ comments: [{ user: { login: "ambiguous-account", id: 8009, type } }] });
+    assert.equal(result.status, "pass", JSON.stringify(type));
+    assert.equal(result.unauthorizedHumanCount, 0);
+    assert.equal(result.uncertainties.length, 1);
+    assert.ok(result.uncertainties[0].includes("ambiguous-account") && result.uncertainties[0].includes("could not be established"));
+  }
+});
+
+test("a participation record without a login is an uncertainty", () => {
+  const result = evaluateMaintainer({ comments: [{ user: { id: 8010, type: "User" } }] });
+  assert.equal(result.status, "pass");
+  assert.equal(result.uncertainties.length, 1);
+  assert.match(result.uncertainties[0], /carries no GitHub login/);
+});
+
+test("requested reviewer teams are not treated as participants", () => {
+  const result = evaluateMaintainer({
+    pull: {
+      body: "Maintenance change.",
+      user: human(MAINTAINER, MAINTAINER_ID),
+      requested_reviewers: [],
+      requested_teams: [{ slug: "core-reviewers" }],
+    },
+    issueEvents: [{ event: "review_requested", actor: human(MAINTAINER, MAINTAINER_ID), requested_team: { slug: "core-reviewers" } }],
+  });
+  assert.equal(result.status, "pass");
+  assert.deepEqual(result.findings, []);
+  assert.deepEqual(result.uncertainties, []);
+});
+
+// 8. Event payload coverage.
+
+test("reviewer-change and deleted-comment payloads are evaluated immediately", () => {
+  const requested = evaluateMaintainer({
+    eventPayload: { action: "review_requested", sender: human("outside-requester", 8011), requested_reviewer: human("outside-target", 8012) },
+  });
+  assert.equal(requested.status, "failure");
+  assert.equal(requested.unauthorizedHumanCount, 2);
+
+  const deleted = evaluateMaintainer({
+    eventPayload: { action: "deleted", comment: { user: human("deleted-commenter", 8013) } },
+  });
+  assert.equal(deleted.status, "failure");
+  assert.ok(deleted.findings[0].includes("deleted-commenter"));
+
+  // A bot doing the same is permitted.
+  assert.equal(evaluateMaintainer({
+    eventPayload: { action: "review_requested", sender: bot("github-actions[bot]", 41898282), requested_reviewer: bot("Copilot", 223556219) },
+  }).status, "pass");
+});
+
+// 9. Configuration and workflow contracts.
+
+test("invalid guard configuration fails closed", () => {
+  for (const bad of [
+    null,
+    "config",
+    { ...config, maintainers: [42] },
+    { ...config, maintainers: [""] },
+    { ...config, maintainers: "Aboyeji-Isaac" },
+    { ...config, exceptions: {} },
+    { ...config, verifiedWebFlowCommitter: { login: "web-flow" } },
+    { ...config, verifiedWebFlowCommitter: "web-flow" },
+  ]) {
+    const result = evaluateParticipantData(maintainerPr(), bad, NOW);
+    assert.equal(result.status, "inconclusive", JSON.stringify(bad));
+    assert.match(result.findings[0], /Invalid participant-guard configuration/);
+  }
+  assert.equal(evaluateParticipantData({ pull: null }, config, NOW).status, "inconclusive");
+});
+
+test("repository configuration lists only maintainers, web-flow, and exceptions", async () => {
+  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
+  assert.deepEqual(Object.keys(repoConfig).sort(), ["exceptions", "maintainers", "verifiedWebFlowCommitter"]);
+  assert.deepEqual(repoConfig.maintainers, [MAINTAINER]);
+  assert.deepEqual(repoConfig.exceptions, []);
+  assert.deepEqual(repoConfig.verifiedWebFlowCommitter, { login: "web-flow", email: WEB_FLOW_EMAIL });
+  // No agent allowlist, co-author allowlist, or attestation mechanism remains.
+  for (const removed of ["approvedBots", "approvedCommitEmails", "approvedCoauthorEmails", "maintainerAttestedCoauthorEmails", "approvedReviewerTeams"]) {
+    assert.equal(repoConfig[removed], undefined, removed);
+  }
+  const serialized = JSON.stringify(repoConfig).toLowerCase();
+  for (const address of ["anthropic", "codebuff", "copilot"]) {
+    assert.ok(!serialized.includes(address), `${address} must not appear in the guard configuration`);
+  }
+});
+
+test("the repository configuration makes real maintainer and contributor shapes pass", async () => {
+  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
+  // Shape of #613/#614: maintainer-authored, no linked issue, AI co-author trailer, web-flow merge commit.
+  const maintainerShape = evaluateParticipantData(maintainerPr({
+    commits: [commit({ message: `security: change\n\nCo-authored-by: Claude Opus 5.5 <${CLAUDE_ADDRESS}>` }), webFlowCommit()],
+  }), repoConfig, NOW);
+  assert.equal(maintainerShape.status, "pass");
+  assert.deepEqual(maintainerShape.findings, []);
+
+  // Shape of #619: assigned contributor plus the Wave program bot.
+  const contributorShape = evaluateParticipantData(contributorPr({
+    comments: [{ user: bot("drips-wave[bot]", 253720017) }],
+  }), repoConfig, NOW);
+  assert.equal(contributorShape.status, "pass");
+
+  // Shape of #605: a branch synchronization carrying other contributors' commits.
+  const syncShape = evaluateParticipantData(maintainerPr({
+    commits: [
+      webFlowCommit({ author: human("ollypee22", 307573989) }),
+      webFlowCommit({ author: human("Widadullahi", 156221762) }),
+      webFlowCommit({ author: human("Widadullahi", 156221762) }),
+    ],
+  }), repoConfig, NOW);
+  assert.equal(syncShape.status, "failure");
+  assert.equal(syncShape.unauthorizedHumanCount, 2);
 });
 
 test("workflow is read-only, runs only trusted pull_request_target events, and uses default-branch code", async () => {
@@ -224,6 +459,11 @@ test("workflow is read-only, runs only trusted pull_request_target events, and u
   assert.doesNotMatch(workflow, /npm install|npm ci|pnpm install|npm test/);
 });
 
+test("the guard is advisory and is not one of the required status checks", async () => {
+  const { REQUIRED_STATUS_CHECKS } = await import("../../scripts/security/pr-malware-core.mjs");
+  assert.deepEqual(REQUIRED_STATUS_CHECKS.map((check) => check.name), ["Scan untrusted PR changes", "Lint, typecheck, test, build"]);
+  assert.ok(!REQUIRED_STATUS_CHECKS.some((check) => check.name === "PR Participant Guard"));
+});
 
 test("API failures and incomplete pagination reject instead of silently passing", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -246,319 +486,4 @@ test("API failures and incomplete pagination reject instead of silently passing"
     headers: { "content-type": "application/json" },
   });
   await assert.rejects(readAllPages("https://api.github.com/repos/org/repo/issues/1/comments?per_page=100", "token"), /omitted Link header/);
-});
-
-
-test("unmapped commit author and committer emails are checked against an explicit allowlist", () => {
-  const approved = evaluateParticipantData(fixture({
-    commits: [{
-      sha: "abcdef012345",
-      author: null,
-      committer: null,
-      commit: {
-        author: { email: "assigned@example.test" },
-        committer: { email: "stranger@example.test" },
-        message: "feat: identity test",
-      },
-    }],
-  }), config);
-  assert.equal(approved.status, "failure");
-  assert.ok(approved.findings.some((finding) => finding.includes("stranger@example.test")));
-  assert.ok(!approved.findings.some((finding) => finding.includes("assigned@example.test")));
-});
-
-test("deleted-comment webhook payload preserves an identity absent from the current comment list", () => {
-  const result = evaluateParticipantData(fixture({
-    comments: [],
-    eventPayload: {
-      action: "deleted",
-      comment: { user: { login: "deleted-comment-author" } },
-    },
-  }), config);
-  assert.equal(result.status, "failure");
-  assert.ok(result.findings.some((finding) => finding.includes("deleted-comment-author") && finding.includes("deleted comment event payload")));
-});
-
-// ---------------------------------------------------------------------------
-// Maintainer exemption, attested co-authors, verified web-flow, and trailers.
-// ---------------------------------------------------------------------------
-
-const repo = { full_name: "Aboyeji-Isaac/StellarCore" };
-const NOW = Date.parse("2026-11-19T00:00:00.000Z");
-const MAINTAINER_NOREPLY = "141873116+aboyeji-isaac@users.noreply.github.com";
-// The only maintainer-attested co-author address. AI tool addresses are not attested.
-const ATTESTED = MAINTAINER_NOREPLY;
-const CLAUDE_ADDRESS = "noreply@anthropic.com";
-const policyConfig = {
-  maintainers: ["Aboyeji-Isaac"],
-  approvedBots: [],
-  approvedCommitEmails: [],
-  approvedCoauthorEmails: [],
-  maintainerAttestedCoauthorEmails: [MAINTAINER_NOREPLY],
-  verifiedWebFlowCommitter: { login: "web-flow", email: "noreply@github.com" },
-  approvedReviewerTeams: [],
-  exceptions: [],
-};
-
-function maintainerCommit(overrides = {}) {
-  return {
-    sha: "1111111aaaaaaa",
-    author: { login: "Aboyeji-Isaac" },
-    committer: { login: "Aboyeji-Isaac" },
-    commit: {
-      message: `security: change\n\nCo-authored-by: Aboyeji-Isaac <${ATTESTED}>`,
-      committer: { email: MAINTAINER_NOREPLY },
-      verification: { verified: false, reason: "unsigned" },
-    },
-    ...overrides,
-  };
-}
-
-function webFlowCommit({ verified = true, reason = "valid", email = "noreply@github.com", author = "Aboyeji-Isaac", message = "Merge pull request #1" } = {}) {
-  return {
-    sha: "2222222bbbbbbb",
-    author: { login: author },
-    committer: { login: "web-flow" },
-    commit: { message, committer: { email }, verification: { verified, reason } },
-  };
-}
-
-function maintainerPr(overrides = {}) {
-  return {
-    pull: { body: "Maintenance change without an issue.", user: { login: "Aboyeji-Isaac" }, head: { repo }, base: { repo }, requested_reviewers: [], requested_teams: [] },
-    comments: [],
-    reviews: [],
-    reviewComments: [],
-    commits: [maintainerCommit()],
-    issueEvents: [],
-    linkedIssues: [],
-    ...overrides,
-  };
-}
-
-function evaluate(overrides) {
-  return evaluateParticipantData(maintainerPr(overrides), policyConfig, NOW);
-}
-
-test("maintainer-authored PR without a linked issue passes when every participant is trusted", () => {
-  const result = evaluate();
-  assert.equal(result.status, "pass");
-  assert.equal(result.mode, "maintainer");
-  assert.deepEqual(result.findings, []);
-});
-
-test("maintainer exemption matches the authenticated PR author case-insensitively", () => {
-  const result = evaluate({ pull: { ...maintainerPr().pull, user: { login: "  ABOYEJI-ISAAC " } } });
-  assert.equal(result.status, "pass");
-});
-
-test("maintainer exemption still evaluates every other participant", () => {
-  for (const overrides of [
-    { comments: [{ user: { login: "outside-commenter" } }] },
-    { reviews: [{ user: { login: "outside-reviewer" } }] },
-    { reviewComments: [{ user: { login: "outside-inline" } }] },
-    { commits: [maintainerCommit({ author: { login: "outside-author" } })] },
-    { commits: [maintainerCommit({ committer: { login: "outside-committer" } })] },
-    { issueEvents: [{ event: "review_requested", actor: { login: "Aboyeji-Isaac" }, requested_reviewer: { login: "outside-target" } }] },
-  ]) {
-    const result = evaluate(overrides);
-    assert.equal(result.status, "failure", JSON.stringify(overrides));
-    assert.equal(result.mode, "maintainer");
-  }
-});
-
-test("maintainer status never comes from commit identities, emails, or trailers", () => {
-  const spoofed = {
-    pull: { body: "No issue.", user: { login: "outside-author" }, head: { repo }, base: { repo }, requested_reviewers: [] },
-    commits: [maintainerCommit({
-      commit: { message: `x\n\nCo-authored-by: Aboyeji-Isaac <${MAINTAINER_NOREPLY}>`, committer: { email: MAINTAINER_NOREPLY } },
-    })],
-  };
-  const result = evaluate(spoofed);
-  assert.equal(result.status, "inconclusive");
-  assert.match(result.findings[0], /No closing reference/);
-  const missingAuthor = evaluate({ pull: { body: "No issue.", head: { repo }, base: { repo } } });
-  assert.equal(missingAuthor.status, "inconclusive");
-});
-
-test("non-maintainer and issue-linked PRs keep the existing rules", () => {
-  const contributorNoIssue = evaluateParticipantData(fixture({ pull: { body: "No issue.", user: { login: "assigned-contributor" }, requested_reviewers: [] } }), config, NOW);
-  assert.equal(contributorNoIssue.status, "inconclusive");
-  // A maintainer PR with a closing reference still requires an assigned, fully returned issue.
-  const linkedUnassigned = evaluate({ pull: { ...maintainerPr().pull, body: "Closes #77" }, linkedIssues: [{ number: 77, assignees: [] }] });
-  assert.equal(linkedUnassigned.status, "inconclusive");
-  const linkedMissing = evaluate({ pull: { ...maintainerPr().pull, body: "Closes #77" }, linkedIssues: [] });
-  assert.equal(linkedMissing.status, "inconclusive");
-  const linkedOk = evaluate({ pull: { ...maintainerPr().pull, body: "Closes #77" }, linkedIssues: [{ number: 77, assignees: [{ login: "helper" }] }] });
-  assert.equal(linkedOk.status, "pass");
-  assert.equal(linkedOk.mode, "linked-issue");
-});
-
-test("maintainer-attested co-author addresses are accepted only under every attestation condition", () => {
-  assert.equal(evaluate().status, "pass");
-  assert.equal(evaluate({ commits: [maintainerCommit({ commit: { message: `x\n\nCo-authored-by: Me <${MAINTAINER_NOREPLY.toUpperCase()}>` } })] }).status, "pass");
-
-  const cases = [
-    ["the pull request author is not a maintainer", {
-      pull: { body: "Closes #5", user: { login: "helper" }, head: { repo }, base: { repo }, requested_reviewers: [] },
-      linkedIssues: [{ number: 5, assignees: [{ login: "helper" }, { login: "Aboyeji-Isaac" }] }],
-    }],
-    ["the pull request head is not in this repository", { pull: { ...maintainerPr().pull, head: { repo: { full_name: "someone/fork" } } } }],
-    ["head/base repository metadata is unavailable", { pull: { ...maintainerPr().pull, head: {} } }],
-    ["head/base repository metadata is unavailable", { pull: { ...maintainerPr().pull, head: { repo: null } } }],
-    ["the commit author is not mapped to a GitHub account", { commits: [maintainerCommit({ author: null })] }],
-    ["the commit author is not a maintainer", { commits: [maintainerCommit({ author: { login: "helper" } })] }],
-    ["the commit committer is not mapped to a GitHub account", { commits: [maintainerCommit({ committer: null })] }],
-    ["the commit committer is neither a maintainer nor a verified web-flow committer", {
-      commits: [{ ...webFlowCommit({ verified: false, reason: "unsigned" }), commit: { ...webFlowCommit({ verified: false, reason: "unsigned" }).commit, message: `x\n\nCo-authored-by: C <${ATTESTED}>` } }],
-    }],
-  ];
-  for (const [reason, overrides] of cases) {
-    const result = evaluate(overrides);
-    assert.equal(result.status, "failure", reason);
-    assert.ok(
-      result.findings.some((finding) => finding.includes(ATTESTED) && finding.includes(`maintainer attestation not satisfied: ${reason}`)),
-      `${reason}: ${JSON.stringify(result.findings)}`,
-    );
-  }
-});
-
-test("attested addresses are not globally trusted and unlisted co-authors still fail", () => {
-  const unlisted = evaluate({ commits: [maintainerCommit({ commit: { message: "x\n\nCo-authored-by: Other <other@example.test>" } })] });
-  assert.equal(unlisted.status, "failure");
-  assert.ok(unlisted.findings.some((finding) => finding.includes("other@example.test")));
-  // An attested address used as a commit author/committer email is not accepted.
-  const asCommitEmail = evaluate({ commits: [maintainerCommit({ author: null, commit: { message: "x", author: { email: ATTESTED } } })] });
-  assert.ok(asCommitEmail.findings.some((finding) => finding.includes(`unmapped commit author email`) && finding.includes(ATTESTED)));
-});
-
-test("a verified web-flow committer is accepted only in the committer role", () => {
-  assert.equal(evaluate({ commits: [webFlowCommit()] }).status, "pass");
-  const attestedViaWebFlow = webFlowCommit({ message: `Merge\n\nCo-authored-by: C <${ATTESTED}>` });
-  assert.equal(evaluate({ commits: [attestedViaWebFlow] }).status, "pass");
-
-  const rejected = [
-    [webFlowCommit({ verified: false, reason: "unsigned" }), "web-flow commit lacks a valid verified GitHub signature"],
-    [webFlowCommit({ verified: true, reason: "expired_key" }), "web-flow commit lacks a valid verified GitHub signature"],
-    [{ ...webFlowCommit(), commit: { message: "m", committer: { email: "noreply@github.com" } } }, "web-flow commit lacks a valid verified GitHub signature"],
-    [webFlowCommit({ email: "attacker@example.test" }), "web-flow committer email does not match the approved GitHub web-flow address"],
-    [{ ...webFlowCommit(), commit: { message: "m", verification: { verified: true, reason: "valid" } } }, "web-flow committer email does not match the approved GitHub web-flow address"],
-  ];
-  for (const [commit, reason] of rejected) {
-    const result = evaluate({ commits: [commit] });
-    assert.equal(result.status, "failure", reason);
-    assert.ok(result.findings.some((finding) => finding.includes('"web-flow"') && finding.includes(reason)), `${reason}: ${JSON.stringify(result.findings)}`);
-  }
-
-  // web-flow as an author, commenter, or reviewer is never accepted.
-  assert.equal(evaluate({ commits: [webFlowCommit({ author: "web-flow" })] }).status, "failure");
-  assert.equal(evaluate({ comments: [{ user: { login: "web-flow" } }] }).status, "failure");
-  // A verified web-flow committer does not excuse the commit author.
-  const outsideAuthor = evaluate({ commits: [webFlowCommit({ author: "outside-author" })] });
-  assert.deepEqual(outsideAuthor.findings, ['Unexpected login "outside-author" in commit author (2222222).']);
-  // Without a configured web-flow committer, web-flow stays unexpected.
-  const noWebFlow = evaluateParticipantData(maintainerPr({ commits: [webFlowCommit()] }), { ...policyConfig, verifiedWebFlowCommitter: undefined }, NOW);
-  assert.equal(noWebFlow.status, "failure");
-});
-
-test("strict trailer parsing reports malformed or unrecognized attribution", () => {
-  assert.deepEqual(parseCoauthorTrailers("x\n\nCo-authored-by: A <A@X.io>\nco-authored-by:B <b@x.io>\r\n"), { emails: ["a@x.io", "b@x.io"], malformed: [] });
-  const variants = [
-    "  Co-authored-by: A <a@x.io>",
-    "Co-authored-by : A <a@x.io>",
-    "Co-authored-by: A <a@x.io> (pairing)",
-    "Co-authored-by: A a@x.io",
-    "Co-authored-by: A <a@x.io>, B <b@x.io>",
-    "Co-Authored_By: A <a@x.io>",
-    "Coauthored-by: A <a@x.io>",
-    "Co-authored-by: A <not-an-email>",
-    "Co-authored-by:",
-  ];
-  for (const line of variants) {
-    const parsed = parseCoauthorTrailers(`subject\n\n${line}`);
-    assert.deepEqual(parsed.emails, [], line);
-    assert.equal(parsed.malformed.length, 1, line);
-    const result = evaluate({ commits: [maintainerCommit({ commit: { message: `subject\n\n${line}` } })] });
-    assert.equal(result.status, "failure", line);
-    assert.ok(result.findings.some((finding) => finding.startsWith("Malformed or unrecognized Co-authored-by attribution")), line);
-  }
-  const both = parseCoauthorTrailers("s\n\nCo-authored-by: A <a@x.io>, B <b@x.io>");
-  assert.deepEqual(both.malformed[0].emails, ["a@x.io", "b@x.io"]);
-  // Malformed attribution cannot be excused by an exception entry.
-  const excepted = evaluateParticipantData(
-    maintainerPr({ commits: [maintainerCommit({ commit: { message: "s\n\n  Co-authored-by: A <a@x.io>" } })] }),
-    { ...policyConfig, exceptions: [{ login: "Co-authored-by: A <a@x.io>", reason: "x", expiresAt: "2099-01-01T00:00:00.000Z" }] },
-    NOW,
-  );
-  assert.equal(excepted.status, "failure");
-  // Ordinary prose that merely mentions co-authors is not attribution.
-  assert.deepEqual(parseCoauthorTrailers("docs: explain how Co-authored-by trailers work"), { emails: [], malformed: [] });
-});
-
-test("invalid guard configuration fails closed", () => {
-  for (const bad of [
-    null,
-    { ...policyConfig, maintainerAttestedCoauthorEmails: ATTESTED },
-    { ...policyConfig, maintainerAttestedCoauthorEmails: [""] },
-    { ...policyConfig, maintainers: [42] },
-    { ...policyConfig, verifiedWebFlowCommitter: { login: "web-flow" } },
-    { ...policyConfig, verifiedWebFlowCommitter: "web-flow" },
-  ]) {
-    const result = evaluateParticipantData(maintainerPr(), bad, NOW);
-    assert.equal(result.status, "inconclusive", JSON.stringify(bad));
-    assert.match(result.findings[0], /Invalid participant-guard configuration/);
-  }
-  assert.equal(evaluateParticipantData({ pull: null }, policyConfig, NOW).status, "inconclusive");
-});
-
-test("repository configuration keeps attested addresses out of the global co-author list", async () => {
-  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
-  assert.deepEqual(repoConfig.approvedCoauthorEmails, []);
-  assert.deepEqual(repoConfig.maintainerAttestedCoauthorEmails, [MAINTAINER_NOREPLY]);
-  // AI co-author attribution is not approved anywhere in the guard configuration.
-  const everyString = JSON.stringify(repoConfig).toLowerCase();
-  assert.ok(!everyString.includes("anthropic"), "no AI tool address may be approved");
-  assert.deepEqual(repoConfig.verifiedWebFlowCommitter, { login: "web-flow", email: "noreply@github.com" });
-  assert.deepEqual(repoConfig.maintainers, ["Aboyeji-Isaac"]);
-  assert.deepEqual(repoConfig.approvedBots, []);
-  assert.deepEqual(repoConfig.exceptions, []);
-});
-
-test("AI co-author attribution is subject to normal validation and is never attested", async () => {
-  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
-  const claudeTrailer = `security: change\n\nCo-authored-by: Claude Opus 5.5 <${CLAUDE_ADDRESS}>`;
-  // Even on a fully attested maintainer commit in a maintainer-authored same-repository PR.
-  const result = evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: claudeTrailer } })] }), repoConfig, NOW);
-  assert.equal(result.status, "failure");
-  assert.deepEqual(result.findings, [`Unexpected email "${CLAUDE_ADDRESS}" in Co-authored-by trailer (1111111).`]);
-  // Case and display-name variants are the same address.
-  const upper = evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: `x\n\nCo-authored-by: Bot <NOREPLY@ANTHROPIC.COM>` } })] }), repoConfig, NOW);
-  assert.equal(upper.status, "failure");
-  // The same maintainer commit without AI attribution passes.
-  assert.equal(evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: "security: change" } })] }), repoConfig, NOW).status, "pass");
-});
-
-test("historical shapes: AI-attributed maintainer PR fails only on the AI trailer; history-sync PR fails only on outside identities", async () => {
-  const repoConfig = JSON.parse(await readFile(new URL("../../.github/pr-participant-guard.json", import.meta.url), "utf8"));
-  // Shape of #609-#613: maintainer-authored, local commits, one Claude co-author trailer each.
-  const aiAttributed = evaluateParticipantData(maintainerPr({
-    commits: [
-      maintainerCommit({ commit: { message: `security: change\n\nCo-authored-by: Claude Opus 5.5 <${CLAUDE_ADDRESS}>` } }),
-      maintainerCommit({ sha: "3333333ccccccc", commit: { message: "Merge development" } }),
-    ],
-  }), repoConfig, NOW);
-  assert.equal(aiAttributed.status, "failure");
-  assert.equal(aiAttributed.findings.length, 1);
-  assert.ok(aiAttributed.findings[0].includes(CLAUDE_ADDRESS));
-  // Shape of #551: maintainer-authored, no AI attribution.
-  assert.equal(evaluateParticipantData(maintainerPr({ commits: [maintainerCommit({ commit: { message: "security: port guard" } }), webFlowCommit()] }), repoConfig, NOW).status, "pass");
-  // Shape of #605: outside author, GitHub-signed web-flow committer, outside and maintainer co-author trailers.
-  const result = evaluate({
-    commits: [webFlowCommit({ author: "outside-author", message: `Fix\n\nCo-authored-by: X <x@example.test>\nCo-authored-by: Me <${MAINTAINER_NOREPLY}>` })],
-  });
-  assert.equal(result.status, "failure");
-  assert.ok(!result.findings.some((finding) => finding.includes('"web-flow"')));
-  assert.ok(result.findings.some((finding) => finding.includes("outside-author")));
-  assert.ok(result.findings.some((finding) => finding.includes("x@example.test")));
-  assert.ok(result.findings.some((finding) => finding.includes(MAINTAINER_NOREPLY) && finding.includes("the commit author is not a maintainer")));
 });

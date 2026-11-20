@@ -4,66 +4,76 @@ The PR Participant Guard checks who has participated in a pull request before ma
 
 ## Policy
 
-The guard considers the PR author; conversation comments; submitted reviews; inline review comments; commit authors and committers (including unmapped commit emails); `Co-authored-by` email trailers; current requested reviewers and teams; and review-request / review-request-removal events available through GitHub's issue timeline. For deleted comment events, it also checks the comment identity retained in the webhook payload.
+The guard reports **authenticated human GitHub accounts** that participated in a pull request and are not authorized for it. Exactly two kinds of human participant are authorized:
 
-An identity is accepted only when it is:
-- listed under `maintainers` in `.github/pr-participant-guard.json`;
-- an assignee of an issue referenced with a closing keyword in the PR body;
-- explicitly listed under `approvedBots`, `approvedCommitEmails`, `approvedCoauthorEmails`, or `approvedReviewerTeams`;
-- a `maintainerAttestedCoauthorEmails` address that satisfies every attestation condition below;
-- the GitHub `web-flow` account in the committer role under the verified conditions below; or
-- covered by a documented exception with a reason and future `expiresAt` timestamp.
+1. a maintainer listed under `maintainers` in `.github/pr-participant-guard.json`; and
+2. a contributor assigned to an issue referenced with a closing keyword in the pull request body.
 
-Unknown bot accounts are not automatically trusted. Keep the approved lists narrow. Exceptions are temporary and should be removed when no longer needed. For contributor PRs, include a closing reference such as `Closes #123` and assign the issue before expecting a passing result.
+Everything else follows from that. A documented, unexpired `exceptions` entry may authorize one additional login temporarily.
 
-### Maintainer-authored pull requests
+### Agents and bots
 
-A PR with no closing issue reference is normally **inconclusive**, because contributor assignment cannot be verified. The single exception is a PR whose author (`pull.user.login`, the identity GitHub authenticates) is listed under `maintainers`. For such a PR every participant is still evaluated, using `maintainers` and `approvedBots` without assignee logins, so any unexpected commenter, reviewer, commit author, committer, or co-author still fails the check.
+Every GitHub account whose API account type is `Bot` is permitted, in every participation role, without any individual approval and whatever the account is called. GitHub Apps, `github-actions[bot]`, program bots, and AI coding agents that act through their own GitHub account are all covered by this single rule. There is no agent allowlist to maintain.
 
-Maintainer status is derived **only** from the PR author. Commit authors and committers (which GitHub maps from unauthenticated commit email addresses), email addresses, and free-text trailers never make a PR maintainer-authored. A maintainer PR that does include a closing reference uses the normal linked-issue rules.
+Contributors are never restricted by which coding agent they use. Claude Code, Codex, Copilot, Codebuff, and any other tool are all equally acceptable; what the guard looks at is the authenticated human account behind the participation.
 
-### Maintainer-attested co-authors
+### Identity sources
 
-`Co-authored-by` trailers are free text that anyone can write. Addresses in `approvedCoauthorEmails` are accepted on any commit; that list is intentionally empty. Addresses in `maintainerAttestedCoauthorEmails` (currently only the maintainer's GitHub noreply address, `141873116+aboyeji-isaac@users.noreply.github.com`) are accepted for a specific commit only when all of the following hold:
+The guard considers the pull request author; conversation comments; submitted reviews; inline review comments; commit authors and committers; current requested reviewers; and review-request / review-request-removal events available through GitHub's issue timeline. For deleted comment events, it also checks the comment identity retained in the webhook payload.
 
-1. the PR author is a configured maintainer;
-2. the PR head repository equals the base repository, so only users with write access could have pushed the commit;
-3. the commit's GitHub-mapped author is a maintainer; and
-4. the commit's GitHub-mapped committer is a maintainer or a verified `web-flow` committer.
+Each of those records is an account GitHub itself authenticated, carrying a login, a numeric id, and an account type. The guard reads identity **only** from those records. It does not read identity from commit message text, commit author or committer email addresses, or `Co-authored-by` trailers, because nothing authenticates them.
 
-If any of this metadata is missing, the address is reported with the failed condition (fail closed). Conditions 3 and 4 only narrow acceptance; they never grant maintainer status.
+### Co-author trailers are not participants
 
-### AI co-author attribution
+`Co-authored-by` trailers are free text in a commit message. They are ignored entirely when determining participants. A commit that credits an AI agent, a pairing partner, or anyone else adds no participant and produces no finding. There is no co-author allowlist and no maintainer attestation mechanism; both were removed as unnecessary under this policy.
 
-StellarCore does not credit AI tools as co-authors. Claude Code's automatic attribution is disabled for this repository, and AI tool addresses such as `noreply@anthropic.com` are not in any guard list, attested or otherwise. Do not add them to obtain a passing result.
+StellarCore still does not credit AI tools as co-authors in new work: Claude Code's automatic attribution stays disabled for this repository. That is a commit-hygiene rule, not a guard rule. Historical commits that carry such a trailer are not rewritten and no longer produce findings.
 
-Existing commits are not rewritten. Historical commits that carry an AI `Co-authored-by` trailer are validated like any other co-author and are reported as unexpected. Maintainer PRs #563 and #609–#613 each contain one such trailer, as does the first commit of PR #614. A future PR that includes those commits, such as a branch synchronization, reports them. Treat that as a known, explained finding and resolve it with the maintainer's normal administrative decision rather than an allowlist entry.
+### Requested reviewer teams
+
+A team is not an authenticated human identity, so requested reviewer teams are ignored. Members of a requested team are evaluated individually if and when they actually participate.
 
 ### GitHub web-flow committer
 
-Commits that GitHub creates on a user's behalf (web edits, merges, or the "Update branch" button) have the committer `web-flow`. Because GitHub maps that login from the committer email, which anyone can set, `web-flow` is accepted only when **all** of these hold, as configured in `verifiedWebFlowCommitter`:
+Commits that GitHub creates on a user's behalf (web edits, merges, or the "Update branch" button) have the committer `web-flow`, an account GitHub reports with type `User`. It is accepted as a machine identity only when **all** of these hold, as configured in `verifiedWebFlowCommitter`:
 
 - it appears in the committer role (never as author, commenter, or reviewer);
 - the committer email equals the approved address `noreply@github.com`; and
 - GitHub reports `verification.verified: true` with reason `valid`.
 
-The commit author is still evaluated separately.
+If those conditions are not met, the committer is reported as an **uncertainty** naming the failed condition, not as an unauthorized human. The commit author is still evaluated separately, and a verified web-flow committer never excuses it.
 
-### Co-author trailer parsing
+### Uncertainties
 
-Only lines in the exact form `Co-authored-by: Name <email>` (any key case, one address, nothing after it) are parsed as attribution. Any other line that looks like co-author attribution, such as indented lines, a space before the colon, text after the address, a missing angle-bracketed address, several addresses on one line, or separator variants like `Co-Authored_By`, is reported as **malformed or unrecognized attribution** together with any addresses it contains. Malformed attribution cannot be excused by an exception entry. Lookalike Unicode characters in the key are not detected.
+Where an account's identity or human/bot classification cannot be established, the guard reports the uncertainty instead of inventing a human identity. Uncertainties are informational and do not fail the check. They are raised when:
+
+- a commit author or committer is not mapped to any GitHub account (the unauthenticated email address is deliberately not reported as an identity);
+- a participation record carries no login; or
+- an account's type is absent or is neither `User` nor `Bot`.
+
+### Counting
+
+Unauthorized humans are deduplicated by authenticated GitHub account. One person who authored three commits and left two comments is one finding listing up to three of their participation records plus a count of the rest, not five findings. `unauthorizedHumanCount` reports the number of distinct accounts.
+
+### Maintainer-authored pull requests
+
+A pull request with no closing issue reference is normally **inconclusive**, because contributor assignment cannot be verified. The single exception is a pull request whose author (`pull.user.login`, the identity GitHub authenticates) is listed under `maintainers`. Maintainer-authored pull requests therefore never need an issue reference, and the maintainer can open, edit, review, and update them freely.
+
+For such a pull request every participant is still evaluated, using `maintainers` without assignee logins, so an unexpected human commenter, reviewer, commit author, or committer still fails the check.
+
+Maintainer status is derived **only** from the pull request author. Commit authors and committers, email addresses, and trailers never make a pull request maintainer-authored.
 
 ### Configuration validation
 
-List fields must be lists of non-empty strings, and `verifiedWebFlowCommitter` must contain a `login` and an `email`. An invalid configuration makes the result inconclusive rather than relaxing any rule.
+`maintainers` and `exceptions` must be lists, `maintainers` must contain only non-empty strings, and `verifiedWebFlowCommitter` must contain a `login` and an `email`. An invalid configuration makes the result inconclusive rather than relaxing any rule.
 
 ## Outcomes
 
-- **Pass:** all observed identities match the configured policy.
-- **Failure:** at least one observed identity is unexpected. Investigate the identity and participation, then resolve it before treating the PR as merge-ready.
-- **Inconclusive:** the linked issue or assignment is missing, or an API response/pagination result is incomplete. This fails the check rather than assuming the PR is safe.
+- **Pass:** every authenticated human participant is a maintainer or an assignee of a linked issue. Uncertainties may still be listed.
+- **Failure:** at least one authenticated human participant is authorized by neither rule. Investigate the account and its participation, then resolve it before treating the pull request as merge-ready.
+- **Inconclusive:** the linked issue or assignment is missing, the configuration is invalid, or an API response/pagination result is incomplete. This fails the check rather than assuming the pull request is safe.
 
-The check reports identities and their participation source. An unexpected account is a reason to investigate, not by itself proof of malicious behavior.
+A reported account is a reason to investigate, not by itself proof of malicious behavior. A branch-synchronization pull request that re-introduces other contributors' commits legitimately reports those contributors; resolve it with the maintainer's normal decision rather than an allowlist entry.
 
 ## Workflow safety and coverage
 
@@ -86,6 +96,6 @@ Because the trusted default-branch definition is used, changes to the guard, its
 3. In the branch protection rule or ruleset for each protected target branch, add the exact required status check **`PR Participant Guard`**. A failing workflow alone does not block merging unless this check is required.
 4. Keep the branch-protection configuration as a separate, explicit administrative change. Revisit the check after any GitHub event/API behavior change.
 
-The guard is currently advisory: it is not a required status check. Its check name is not one of the required names protected by the malware scanner's `required-check-name-collision` rule; if the guard is ever made required, add it to that rule's trusted list first.
+The guard is currently advisory: it is not a required status check. The required checks are `Scan untrusted PR changes` and `Lint, typecheck, test, build`, and this policy change does not alter them. The guard's check name is not one of the required names protected by the malware scanner's `required-check-name-collision` rule; if the guard is ever made required, add it to that rule's trusted list first.
 
 The workflow currently targets PRs into `development` and `main`. It checks out the default branch because `pull_request_target` must not execute code supplied by the PR. Consequently, a new workflow cannot run as the trusted workflow for its own initial PR before it exists on the default branch. Until rollout is complete and the status check is required, it is advisory rather than a merge barrier.
