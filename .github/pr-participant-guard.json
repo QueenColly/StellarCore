@@ -1,15 +1,8 @@
 {
   "maintainers": ["Aboyeji-Isaac"],
-  "approvedBots": [],
-  "approvedCommitEmails": [],
-  "approvedCoauthorEmails": [],
-  "maintainerAttestedCoauthorEmails": [
-    "141873116+aboyeji-isaac@users.noreply.github.com"
-  ],
   "verifiedWebFlowCommitter": {
     "login": "web-flow",
     "email": "noreply@github.com"
   },
-  "approvedReviewerTeams": [],
   "exceptions": []
 }

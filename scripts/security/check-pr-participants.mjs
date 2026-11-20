@@ -6,12 +6,17 @@ const API_ROOT = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 100;
+const MAX_REPORTED_SOURCES = 3;
 
 function failClosed(message) {
-  return { status: "inconclusive", findings: [message] };
+  return { status: "inconclusive", findings: [message], uncertainties: [] };
 }
 
 function normalizeLogin(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
@@ -26,49 +31,19 @@ export function parseClosingIssueNumbers(body = "") {
   return [...numbers].filter((number) => Number.isSafeInteger(number) && number > 0);
 }
 
-// Any line that looks like a co-author attribution, including indented,
-// spaced, or case/separator variants. Lines that match this but not the strict
-// trailer form below are reported as malformed rather than silently ignored.
-const COAUTHOR_CANDIDATE = /^\s*co[\s_-]*authored[\s_-]*by\s*:/i;
-// Exactly one "Name <email>" per trailer line, nothing after the address.
-const COAUTHOR_TRAILER = /^Co-authored-by:[ \t]*[^<>\r\n]*<([^<>\s]+@[^<>\s]+)>$/i;
-const EMAIL_LIKE = /[^\s<>(),;:"'`]+@[^\s<>(),;:"'`]+/g;
-
-export function parseCoauthorTrailers(message = "") {
-  const emails = new Set();
-  const malformed = [];
-  for (const rawLine of String(message).split(/\r?\n/)) {
-    const line = rawLine.replace(/[ \t]+$/, "");
-    if (!COAUTHOR_CANDIDATE.test(line)) continue;
-    const match = line.match(COAUTHOR_TRAILER);
-    if (match) {
-      emails.add(match[1].trim().toLowerCase());
-      continue;
-    }
-    malformed.push({
-      line: line.trim().slice(0, 200),
-      emails: [...new Set((line.match(EMAIL_LIKE) ?? []).map((email) => email.toLowerCase()))],
-    });
-  }
-  return { emails: [...emails], malformed };
-}
-
-export function parseCoauthorEmails(message = "") {
-  return parseCoauthorTrailers(message).emails;
-}
-
-function addActor(participants, login, source, extra = {}) {
-  if (typeof login !== "string" || !login.trim()) return;
-  participants.push({ identity: login.trim(), kind: "login", source, ...extra });
-}
-
-function addEmail(participants, email, source, extra = {}) {
-  if (typeof email !== "string" || !email.trim()) return;
-  participants.push({ identity: email.trim().toLowerCase(), kind: "email", source, ...extra });
-}
-
-function normalizeEmail(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+// Every participation record is an account GitHub authenticated: a login the
+// API returned together with its numeric id and account type. Commit message
+// text, commit author/committer email addresses, and `Co-authored-by` trailers
+// are never read as identities, because nothing authenticates them.
+function addAccount(accounts, user, source, extra = {}) {
+  if (!isRecord(user)) return;
+  accounts.push({
+    login: typeof user.login === "string" ? user.login.trim() : "",
+    id: user.id,
+    type: user.type,
+    source,
+    ...extra,
+  });
 }
 
 // GitHub's web-flow account is accepted only as a committer, only with the
@@ -77,7 +52,6 @@ function normalizeEmail(value) {
 // is still evaluated separately.
 function webFlowCommitterStatus(commit, webFlow) {
   if (!isRecord(webFlow) || !webFlow.login || !webFlow.email) return { ok: false, reason: "no web-flow committer is configured" };
-  if (normalizeLogin(commit?.committer?.login) !== normalizeLogin(webFlow.login)) return { ok: false, reason: "committer is not web-flow" };
   if (normalizeEmail(commit?.commit?.committer?.email) !== normalizeEmail(webFlow.email)) {
     return { ok: false, reason: "web-flow committer email does not match the approved GitHub web-flow address" };
   }
@@ -88,36 +62,15 @@ function webFlowCommitterStatus(commit, webFlow) {
   return { ok: true };
 }
 
-// Maintainer-attested co-author addresses are never trusted on their own. A
-// trailer is free text, so the address is accepted for one commit only when the
-// authenticated PR author is a maintainer, the PR head is in this repository,
-// the commit's GitHub-mapped author is a maintainer, and its committer is a
-// maintainer or a verified web-flow committer. These commit identities only
-// narrow acceptance; maintainer status itself comes solely from the PR author.
-function maintainerAttestation(pull, commit, maintainers, webFlow) {
-  if (!maintainers.has(normalizeLogin(pull?.user?.login))) return { ok: false, reason: "the pull request author is not a maintainer" };
-  const headRepo = pull?.head?.repo?.full_name;
-  const baseRepo = pull?.base?.repo?.full_name;
-  if (typeof headRepo !== "string" || typeof baseRepo !== "string") return { ok: false, reason: "head/base repository metadata is unavailable" };
-  if (headRepo.toLowerCase() !== baseRepo.toLowerCase()) return { ok: false, reason: "the pull request head is not in this repository" };
-  if (!commit?.author?.login) return { ok: false, reason: "the commit author is not mapped to a GitHub account" };
-  if (!maintainers.has(normalizeLogin(commit.author.login))) return { ok: false, reason: "the commit author is not a maintainer" };
-  if (!commit?.committer?.login) return { ok: false, reason: "the commit committer is not mapped to a GitHub account" };
-  if (!maintainers.has(normalizeLogin(commit.committer.login)) && !webFlowCommitterStatus(commit, webFlow).ok) {
-    return { ok: false, reason: "the commit committer is neither a maintainer nor a verified web-flow committer" };
-  }
-  return { ok: true };
-}
-
-const CONFIG_LIST_KEYS = ["maintainers", "approvedBots", "approvedCommitEmails", "approvedCoauthorEmails", "maintainerAttestedCoauthorEmails", "approvedReviewerTeams", "exceptions"];
+const CONFIG_LIST_KEYS = ["maintainers", "exceptions"];
 
 function configProblem(config) {
   if (!isRecord(config)) return "the guard configuration is not an object";
   for (const key of CONFIG_LIST_KEYS) {
     if (config[key] !== undefined && !Array.isArray(config[key])) return `configuration field ${key} must be a list`;
   }
-  for (const key of CONFIG_LIST_KEYS.filter((name) => name !== "exceptions")) {
-    if ((config[key] ?? []).some((value) => typeof value !== "string" || !value.trim())) return `configuration field ${key} must contain only non-empty strings`;
+  if ((config.maintainers ?? []).some((value) => typeof value !== "string" || !value.trim())) {
+    return "configuration field maintainers must contain only non-empty strings";
   }
   if (config.verifiedWebFlowCommitter !== undefined) {
     const webFlow = config.verifiedWebFlowCommitter;
@@ -129,79 +82,53 @@ function configProblem(config) {
 }
 
 function collectParticipants({ pull, comments, reviews, reviewComments, commits, issueEvents, eventPayload }) {
-  const participants = [];
-  addActor(participants, pull.user?.login, "pull request author");
-  if (eventPayload?.action === "deleted" && eventPayload.comment?.user?.login) {
-    addActor(participants, eventPayload.comment.user.login, "deleted comment event payload");
+  const accounts = [];
+  const unmapped = [];
+  addAccount(accounts, pull.user, "pull request author");
+  if (eventPayload?.action === "deleted") {
+    addAccount(accounts, eventPayload.comment?.user, "deleted comment event payload");
   }
   if (["review_requested", "review_request_removed"].includes(eventPayload?.action)) {
-    addActor(participants, eventPayload.sender?.login, `reviewer change requester (${eventPayload.action})`);
-    addActor(participants, eventPayload.requested_reviewer?.login, `reviewer target (${eventPayload.action})`);
-    if (eventPayload.requested_team?.slug) {
-      participants.push({
-        identity: eventPayload.requested_team.slug,
-        kind: "team",
-        source: `reviewer team target (${eventPayload.action})`,
-      });
-    }
+    addAccount(accounts, eventPayload.sender, `reviewer change requester (${eventPayload.action})`);
+    addAccount(accounts, eventPayload.requested_reviewer, `reviewer target (${eventPayload.action})`);
   }
 
-  for (const item of comments) addActor(participants, item.user?.login, "conversation comment");
-  for (const item of reviews) addActor(participants, item.user?.login, "submitted review");
-  for (const item of reviewComments) addActor(participants, item.user?.login, "inline review comment");
+  for (const item of comments) addAccount(accounts, item.user, "conversation comment");
+  for (const item of reviews) addAccount(accounts, item.user, "submitted review");
+  for (const item of reviewComments) addAccount(accounts, item.user, "inline review comment");
 
   for (const item of commits) {
     const short = item.sha?.slice(0, 7) ?? "unknown commit";
-    addActor(participants, item.author?.login, `commit author (${short})`);
-    if (!item.author?.login) addEmail(participants, item.commit?.author?.email, `unmapped commit author email (${short})`);
-    addActor(participants, item.committer?.login, `commit committer (${short})`, { role: "committer", commit: item });
-    if (!item.committer?.login) addEmail(participants, item.commit?.committer?.email, `unmapped commit committer email (${short})`);
-    const trailers = parseCoauthorTrailers(item.commit?.message);
-    for (const email of trailers.emails) {
-      addEmail(participants, email, `Co-authored-by trailer (${short})`, { role: "coauthor", commit: item });
-    }
-    for (const entry of trailers.malformed) {
-      participants.push({
-        identity: entry.line,
-        kind: "malformed-trailer",
-        source: `commit message (${short})${entry.emails.length ? `; addresses: ${entry.emails.join(", ")}` : ""}`,
-      });
-    }
+    if (isRecord(item.author)) addAccount(accounts, item.author, `commit author (${short})`, { role: "author", commit: item });
+    else unmapped.push(`The commit author of ${short} is not mapped to a GitHub account, so no authenticated identity could be established.`);
+    if (isRecord(item.committer)) addAccount(accounts, item.committer, `commit committer (${short})`, { role: "committer", commit: item });
+    else unmapped.push(`The commit committer of ${short} is not mapped to a GitHub account, so no authenticated identity could be established.`);
   }
 
   for (const event of issueEvents) {
     if (event.event === "review_requested" || event.event === "review_request_removed") {
-      addActor(participants, event.actor?.login, `reviewer change requester (${event.event})`);
-      addActor(participants, event.requested_reviewer?.login, `reviewer target (${event.event})`);
-      if (event.requested_team?.slug) {
-        participants.push({
-          identity: event.requested_team.slug,
-          kind: "team",
-          source: `reviewer team target (${event.event})`,
-        });
-      }
+      addAccount(accounts, event.actor, `reviewer change requester (${event.event})`);
+      addAccount(accounts, event.requested_reviewer, `reviewer target (${event.event})`);
     }
   }
 
   for (const reviewer of pull.requested_reviewers ?? []) {
-    addActor(participants, reviewer.login, "currently requested reviewer");
+    addAccount(accounts, reviewer, "currently requested reviewer");
   }
-  for (const team of pull.requested_teams ?? []) {
-    if (team.slug) participants.push({ identity: team.slug, kind: "team", source: "currently requested reviewer team" });
-  }
+  // Requested reviewer teams are not authenticated human identities. Members of
+  // a requested team are evaluated individually when they actually participate.
 
-  return participants;
+  return { accounts, unmapped };
 }
 
-function validException(exception, participant, now) {
+function validException(exception, login, now) {
   if (!isRecord(exception) || !exception.login || !exception.reason || !exception.expiresAt) return false;
-  if (Date.parse(exception.expiresAt) <= now || !Number.isFinite(Date.parse(exception.expiresAt))) return false;
-  return participant.kind === "login"
-    && normalizeLogin(exception.login) === normalizeLogin(participant.identity);
+  const expiresAt = Date.parse(exception.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= now) return false;
+  return normalizeLogin(exception.login) === login;
 }
 
 export function evaluateParticipantData(data, config, now = Date.now()) {
-  const findings = [];
   const problem = configProblem(config);
   if (problem) return failClosed(`Invalid participant-guard configuration: ${problem}.`);
   if (!isRecord(data?.pull)) return failClosed("Pull request data is incomplete.");
@@ -240,55 +167,64 @@ export function evaluateParticipantData(data, config, now = Date.now()) {
     }
   }
 
-  const approvedBots = new Set((config.approvedBots ?? []).map(normalizeLogin));
-  const approvedCoauthorEmails = new Set((config.approvedCoauthorEmails ?? []).map(normalizeEmail));
-  const attestedCoauthorEmails = new Set((config.maintainerAttestedCoauthorEmails ?? []).map(normalizeEmail));
-  const approvedCommitEmails = new Set((config.approvedCommitEmails ?? []).map(normalizeEmail));
-  const allowedLogins = new Set([...maintainers, ...assignedLogins, ...approvedBots]);
+  const authorizedHumans = new Set([...maintainers, ...assignedLogins]);
   const webFlow = config.verifiedWebFlowCommitter;
-  const participants = collectParticipants(data);
+  const { accounts, unmapped } = collectParticipants(data);
+  const uncertainties = [...unmapped];
+  // Unauthorized humans are counted per authenticated account, not per record.
+  const unauthorized = new Map();
+  let machineRecords = 0;
 
-  for (const participant of participants) {
-    let allowed = false;
-    let detail = "";
-    if (participant.kind === "malformed-trailer") {
-      detail = "attribution is not in the exact `Co-authored-by: Name <email>` form, so it cannot be verified";
-    } else if (participant.kind === "email" && participant.role === "coauthor") {
-      allowed = approvedCoauthorEmails.has(participant.identity);
-      if (!allowed && attestedCoauthorEmails.has(participant.identity)) {
-        const attestation = maintainerAttestation(data.pull, participant.commit, maintainers, webFlow);
-        allowed = attestation.ok;
-        if (!allowed) detail = `maintainer attestation not satisfied: ${attestation.reason}`;
-      }
-    } else if (participant.kind === "email") {
-      allowed = approvedCommitEmails.has(participant.identity);
-    } else if (participant.kind === "team") {
-      allowed = (config.approvedReviewerTeams ?? []).map((team) => String(team).toLowerCase()).includes(participant.identity.toLowerCase());
-    } else {
-      allowed = allowedLogins.has(normalizeLogin(participant.identity));
-      if (!allowed && participant.role === "committer" && webFlow && normalizeLogin(participant.identity) === normalizeLogin(webFlow.login)) {
-        const status = webFlowCommitterStatus(participant.commit, webFlow);
-        allowed = status.ok;
-        if (!allowed) detail = status.reason;
-      }
+  for (const account of accounts) {
+    const login = normalizeLogin(account.login);
+    if (!login) {
+      uncertainties.push(`A participation record in ${account.source} carries no GitHub login, so no authenticated identity could be established.`);
+      continue;
     }
+    // Every GitHub App / bot account is permitted, whatever it is called. AI
+    // coding agents that act through their own GitHub account land here.
+    if (account.type === "Bot") {
+      machineRecords += 1;
+      continue;
+    }
+    if (webFlow && account.role === "committer" && login === normalizeLogin(webFlow.login)) {
+      const status = webFlowCommitterStatus(account.commit, webFlow);
+      if (status.ok) {
+        machineRecords += 1;
+      } else {
+        uncertainties.push(`Committer "${account.login}" in ${account.source} could not be confirmed as GitHub's web-flow service account (${status.reason}).`);
+      }
+      continue;
+    }
+    if (account.type !== "User") {
+      uncertainties.push(`Account "${account.login}" in ${account.source} has account type ${JSON.stringify(account.type ?? null)}, so its human/bot classification could not be established.`);
+      continue;
+    }
+    if (authorizedHumans.has(login)) continue;
+    if ((config.exceptions ?? []).some((exception) => validException(exception, login, now))) continue;
 
-    const excepted = participant.kind !== "malformed-trailer" &&
-      (config.exceptions ?? []).some((exception) => validException(exception, participant, now));
-    if (!allowed && !excepted) {
-      const label = participant.kind === "malformed-trailer" ? "Malformed or unrecognized Co-authored-by attribution" : `Unexpected ${participant.kind}`;
-      findings.push(`${label} "${participant.identity}" in ${participant.source}${detail ? ` (${detail})` : ""}.`);
-    }
+    const entry = unauthorized.get(login) ?? { login: account.login, id: account.id, sources: [] };
+    if (!entry.sources.includes(account.source)) entry.sources.push(account.source);
+    unauthorized.set(login, entry);
   }
 
-  const uniqueFindings = [...new Set(findings)];
+  const findings = [...unauthorized.values()].map((participant) => {
+    const shown = participant.sources.slice(0, MAX_REPORTED_SOURCES).join("; ");
+    const hidden = participant.sources.length - MAX_REPORTED_SOURCES;
+    const extra = hidden > 0 ? ` and ${hidden} further record${hidden === 1 ? "" : "s"}` : "";
+    return `Unauthorized human participant "${participant.login}" (account ${participant.id ?? "unknown"}) is neither a configured maintainer nor an assignee of a linked issue: ${shown}${extra}.`;
+  });
+
   return {
-    status: uniqueFindings.length ? "failure" : "pass",
-    findings: uniqueFindings,
+    status: findings.length ? "failure" : "pass",
+    findings,
+    uncertainties: [...new Set(uncertainties)],
     mode,
     linkedIssues,
     assignedContributors: [...assignedLogins].sort(),
-    participantCount: participants.length,
+    unauthorizedHumanCount: unauthorized.size,
+    participantCount: accounts.length,
+    machineRecords,
   };
 }
 
@@ -361,9 +297,17 @@ async function main() {
   const result = evaluateParticipantData({ pull, comments, reviews, reviewComments, commits, issueEvents, linkedIssues, eventPayload }, config);
   console.log(`PR Participant Guard: ${result.status.toUpperCase()}`);
   for (const finding of result.findings) console.log(`- ${finding}`);
-  if (result.status !== "pass") process.exitCode = 1;
-  else if (result.mode === "maintainer") console.log(`Reviewed ${result.participantCount} participation records for a maintainer-authored pull request without a linked issue.`);
-  else console.log(`Reviewed ${result.participantCount} participation records across linked issue(s): ${result.linkedIssues.map((n) => `#${n}`).join(", ")}.`);
+  for (const uncertainty of result.uncertainties ?? []) console.log(`? ${uncertainty}`);
+  if (result.status !== "pass") {
+    process.exitCode = 1;
+    return;
+  }
+  const machine = `${result.machineRecords} bot or verified service record${result.machineRecords === 1 ? "" : "s"} permitted without individual approval`;
+  if (result.mode === "maintainer") {
+    console.log(`Reviewed ${result.participantCount} participation records for a maintainer-authored pull request without a linked issue (${machine}).`);
+  } else {
+    console.log(`Reviewed ${result.participantCount} participation records across linked issue(s): ${result.linkedIssues.map((n) => `#${n}`).join(", ")} (${machine}).`);
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
