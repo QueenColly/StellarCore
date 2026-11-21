@@ -1,0 +1,8 @@
+UI/UX Design (Light Mode)
+
+Footer Component: Designed a responsive footer with consistent branding, validated navigation links, read-only context, and desktop/mobile layouts.
+Open Dashboard: Designed a closing CTA that navigates to the read-only /dashboard route, including hover and keyboard-focus states.
+The Product Contract (Four Promises): Designed a four-promise section communicating read-only visibility, separated evidence layers, transparent limitations, and explainability.
+Reputation Evidence: Designed a definition panel explaining persisted reputation evaluations, absent trusted outcomes, unpublished scores, and insufficient evidence without fabricating reputation scores.
+
+https://www.figma.com/design/EVlcc7eZ1qFrktyGCrZups/StellarCore-UI-UX?node-id=0-1&p=f&t=fKp3tTJoxtPvaH77-0
