@@ -1,0 +1,24 @@
+UI/UX Design (Light Mode)
+
+1. Corridors Section:
+Present reviewed corridors through their source, destination, associated anchors, asset details, and country labels. Make it explicit that reviewed corridor membership does not establish a verified or executable transfer route.
+
+2. Reputation Section
+Show persisted reputation evaluations with clear explanations of evidence sufficiency. Only present a score when the available outcome evidence supports one; avoid assigning credibility to missing or insufficient evidence.
+
+3. Horizontal Inspection Overview 
+Create a desktop-oriented composition that separates the four inspection categories:
+
+- Anchor metadata
+- Reviewed corridors
+- Rate observations
+- Reputation evidence
+
+4. Vertical Inspection Overview
+Provide a mobile-friendly vertical arrangement of the same four categories, preserving their meaning, distinction, and intended reading sequence without introducing additional functionality
+
+
+https://www.figma.com/design/EVlcc7eZ1qFrktyGCrZups/StellarCore-UI-UX?node-id=0-1&p=f&t=fKp3tTJoxtPvaH77-0
+
+
+
