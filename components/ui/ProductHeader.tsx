@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 type ProductHeaderProps = Readonly<{
-  current: "home" | "dashboard";
+  current: "home" | "dashboard" | "insights";
   variant?: "overlay" | "solid";
 }>;
 
