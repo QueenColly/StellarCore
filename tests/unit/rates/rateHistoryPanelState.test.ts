@@ -122,13 +122,24 @@ test("repeated failures keep the original successful data, not an intermediate v
 test("describeDataAge reports the age of retained data deterministically", () => {
   const evaluatedAt = "2026-10-01T12:00:00.000Z";
   const at = (iso: string) => describeDataAge(evaluatedAt, new Date(iso));
+  assert.equal(at("2026-10-01T12:00:00.000Z"), "less than a minute old");
   assert.equal(at("2026-10-01T12:00:30.000Z"), "less than a minute old");
+  assert.equal(at("2026-10-01T12:00:59.000Z"), "less than a minute old");
   assert.equal(at("2026-10-01T12:01:00.000Z"), "1 minute old");
   assert.equal(at("2026-10-01T12:45:00.000Z"), "45 minutes old");
   assert.equal(at("2026-10-01T13:00:00.000Z"), "1 hour old");
   assert.equal(at("2026-10-01T17:59:00.000Z"), "5 hours old");
+  assert.equal(at("2026-10-02T12:00:00.000Z"), "1 day old");
   assert.equal(at("2026-10-03T12:00:00.000Z"), "2 days old");
-  assert.equal(describeDataAge("not-a-date", new Date()), "of unknown age");
+  assert.equal(describeDataAge("not-a-date", new Date("2026-10-01T12:00:00.000Z")), "of unknown age");
+  assert.equal(describeDataAge("", new Date("2026-10-01T12:00:00.000Z")), "of unknown age");
+});
+
+test("describeDataAge does not describe future-dated evidence as recently old", () => {
+  const now = new Date("2026-10-01T12:00:00.000Z");
+  assert.equal(describeDataAge("2026-10-01T12:00:01.000Z", now), "ahead of evaluation time");
+  assert.equal(describeDataAge("2026-10-01T12:05:00.000Z", now), "ahead of evaluation time");
+  assert.equal(describeDataAge("2026-10-02T12:00:00.000Z", now), "ahead of evaluation time");
 });
 
 test("loader + reducer: transient API failure between successes never blanks the panel", async () => {

@@ -26,6 +26,19 @@ Only reviewed and approved changes are promoted from `contributions` into
 `development`, and only release-ready work is promoted from `development` into
 `main`.
 
+### Promotion between branches
+
+Promotion pull requests are opened by maintainers, never by contributors:
+
+- **`contributions` → `development`.** Only changes that have been reviewed and
+  approved on `contributions`, with both required checks green, are promoted
+  into the staging branch. The advisory Participant Guard result is reviewed
+  before promotion rather than ignored.
+- **`development` → `main`.** Only release-ready, integration-tested work.
+
+Contributors never need to open a promotion pull request; targeting
+`contributions` is enough.
+
 Create a focused branch from `contributions` using one of these prefixes:
 
 - `feat/` for a new feature
