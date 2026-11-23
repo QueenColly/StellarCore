@@ -21,13 +21,17 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const result = await getAnchorApiResult(slug);
-  if (result.status !== 200) return { title: "Anchor not found — StellarCore" };
-
-  const { anchor } = result.body;
-  return {
-    title: `${anchor.name} — StellarCore`,
-    description: `Read-only anchor detail for ${anchor.name} (${anchor.homeDomain}).`,
-  };
+  if (result.status === 200) {
+    const { anchor } = result.body;
+    return {
+      title: `${anchor.name} — StellarCore`,
+      description: `Read-only anchor detail for ${anchor.name} (${anchor.homeDomain}).`,
+    };
+  }
+  if (result.status === 400 || result.status === 404) {
+    return { title: "Anchor not found — StellarCore" };
+  }
+  return { title: "Anchor unavailable — StellarCore" };
 }
 
 export default async function AnchorPage({ params }: Props) {
