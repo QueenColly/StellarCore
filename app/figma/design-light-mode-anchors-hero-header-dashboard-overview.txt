@@ -1,0 +1,20 @@
+UI/UX Design (Light Mode)
+
+Anchor Overview :
+Design responsive anchor summary frames that communicate persisted synchronization state accurately. Clarify that advertised interfaces come from the last successful SEP-1 synchronization and do not guarantee current service availability.
+
+Landing Hero:
+Establish the page's first impression around the message:
+StellarCore: Read Only Stellar Intelligence
+Use concise supporting content to introduce anchor information, corridors, rate evidence, and reputation evaluations. Make the read-only nature of the platform clear, with a CTA connected to existing navigation.
+
+Header Navigation:
+Develop a Light Mode header featuring the StellarCore brand mark and supported navigation links to Evidence Model and Dashboard. Include appropriate active-link styling and a usable mobile navigation treatment.
+
+Dashboard Reading Guide:
+Create an explanatory section showing how StellarCore's evidence layers relate while retaining their distinct meanings:
+
+
+
+https://www.figma.com/design/EVlcc7eZ1qFrktyGCrZups/StellarCore-UI-UX?node-id=0-1&p=f&t=fKp3tTJoxtPvaH77-0
+
