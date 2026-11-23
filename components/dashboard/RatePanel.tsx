@@ -1,4 +1,4 @@
-
+import Link from "next/link";
 import {
   getRatesApiResult,
   type RatesApiDependencies,
@@ -13,6 +13,27 @@ import {
 import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
 
 const FEATURED_CORRIDOR_SLUG = "usdc-us-brl-br";
+const FEATURED_CORRIDOR_HREF = `/corridors/${encodeURIComponent(FEATURED_CORRIDOR_SLUG)}`;
+
+/**
+ * Navigation to the complete read-only corridor page. Rendered in every panel
+ * state (including a null median, no observations, or an unavailable rates
+ * response) because the corridor page holds configuration, anchors, and
+ * history that remain useful without a published median. The copy promises
+ * evidence, never a live price.
+ */
+function CorridorEvidenceLink() {
+  return (
+    <Link
+      href={FEATURED_CORRIDOR_HREF}
+      data-testid="featured-corridor-evidence-link"
+      className="inline-flex items-center gap-1 rounded-sm text-sm text-[var(--accent)] underline underline-offset-4 hover:text-[var(--white)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]"
+    >
+      View corridor evidence
+      <span aria-hidden="true">→</span>
+    </Link>
+  );
+}
 
 function isValidEvidenceTime(value: string): boolean {
   const parsed = Date.parse(value);
@@ -49,7 +70,14 @@ export function RatePanelView({
   result,
 }: Readonly<{ result: RatesApiResult }>) {
   if (result.status !== 200) {
-    return <SectionError message={result.body.error.message} />;
+    return (
+      <>
+        <SectionError message={result.body.error.message} />
+        <p className="mt-3">
+          <CorridorEvidenceLink />
+        </p>
+      </>
+    );
   }
 
   const {
@@ -116,10 +144,13 @@ export function RatePanelView({
           </p>
         </div>
 
-        <Badge
-          tone={state === "healthy" ? "positive" : "warning"}
-          label={state.replace(/_/g, " ")}
-        />
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <Badge
+            tone={state === "healthy" ? "positive" : "warning"}
+            label={state.replace(/_/g, " ")}
+          />
+          <CorridorEvidenceLink />
+        </div>
       </div>
 
       <dl className="mt-6 grid grid-cols-1 gap-4 border-t border-[var(--ghost)] pt-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
