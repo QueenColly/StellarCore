@@ -12,6 +12,7 @@ import {
   initialRateHistoryPanelState,
   rateHistoryPanelReducer,
 } from "@/lib/rates/rateHistoryPanelState";
+import { historyToCsv } from "@/lib/rates/historyCsv";
 import type {
   PublicRateHistoryPoint,
   PublicRateHistoryResponse,
@@ -50,6 +51,7 @@ export function CorridorRateHistoryChart({
   const { displayed: history, selectedDays, loading, failure } = panel;
   const displayedDays = history.windowDays;
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+  const [exportCsv, setExportCsv] = useState<string | null>(null);
   const loaderRef = useRef<RateHistoryLoader | null>(null);
 
   useEffect(() => {
@@ -89,6 +91,12 @@ export function CorridorRateHistoryChart({
 
     // The loader aborts in-flight requests so only the latest selection can update the chart.
     void loaderRef.current?.load(days);
+  }
+
+  function handleExportCsv() {
+    if (loading || !history.points.length) return;
+    const csv = historyToCsv(corridorSlug, history);
+    setExportCsv(csv);
   }
 
   const validPoints = history.points
@@ -280,6 +288,18 @@ export function CorridorRateHistoryChart({
           </div>
         </div>
       </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={loading || !history.points.length}
+            className="rounded bg-[var(--accent)] px-4 py-2 font-medium text-sm text-[var(--white)] hover:bg-[color:mix(in_srgb,var(--accent)_10%,var(--black))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            aria-label="Export rate history CSV"
+            title="Export rate history CSV"
+          >
+            Export CSV
+          </button>
+        </div>
 
       <div
         aria-busy={loading}
