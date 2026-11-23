@@ -1,4 +1,5 @@
 
+import Link from "next/link";
 import {
   getCorridorsApiResult,
   type CorridorsApiDependencies,
@@ -51,7 +52,13 @@ export function CorridorsSectionView({
               className="border-b border-[var(--ghost)] last:border-0"
             >
               <td className="px-4 py-3 text-[var(--white)]">
-                {corridor.sourceAsset} · {corridor.sourceCountry}
+                <Link
+                  href={`/corridors/${corridor.slug}`}
+                  className="underline underline-offset-4 hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]"
+                  passHref={false}
+                >
+                  {corridor.sourceAsset} · {corridor.sourceCountry}
+                </Link>
               </td>
 
               <td className="px-4 py-3 text-[var(--white)]">
