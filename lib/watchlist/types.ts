@@ -33,7 +33,7 @@ export function isWatchlistItem(value: unknown): value is WatchlistItem {
 export function createWatchlistStore(
   storageKey: string = "stellarcore-watchlist",
 ): WatchlistStore {
-  let saved: WatchlistItem[] = [];
+  const saved: WatchlistItem[] = [];
   try {
     if (typeof window !== "undefined") {
       const raw = window.localStorage.getItem(storageKey);
