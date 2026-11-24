@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { exposeReactForClassicJsx } from "../../support/dashboardContracts";
+import { exposeReactForClassicJsx, withTestAppRouter } from "../../support/dashboardContracts";
 import { ReputationSectionView } from "@/components/dashboard/ReputationSection";
 import type { ReputationApiListResult } from "@/types/api/reputation";
 
@@ -107,6 +107,6 @@ test("reputation error state renders correctly", () => {
     body: { error: { code: "internal_error", message: "Unable to load reputation." } },
   } as const satisfies ReputationApiListResult;
 
-  const markup = renderToStaticMarkup(ReputationSectionView({ result }));
+  const markup = renderToStaticMarkup(withTestAppRouter(ReputationSectionView({ result })));
   assert.match(markup, /Unable to load reputation/);
 });
