@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { exposeReactForClassicJsx } from "../../support/dashboardContracts";
-import CompareAnchorsPage, { AnchorComparison } from "@/app/compare/anchors/page";
+import CompareAnchorsPage from "@/app/compare/anchors/page";
+import { AnchorComparison } from "@/components/compare/AnchorComparison";
 import type { PublicAnchorSummary } from "@/types/api/anchors";
 
 exposeReactForClassicJsx();

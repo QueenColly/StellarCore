@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { exposeReactForClassicJsx } from "../../support/dashboardContracts";
-import WatchlistPage, { SavedBookmarks } from "@/app/watchlist/page";
+import WatchlistPage from "@/app/watchlist/page";
+import { SavedBookmarks } from "@/components/watchlist/SavedBookmarks";
 import { createWatchlistStore, type WatchlistItem } from "@/lib/watchlist";
 
 exposeReactForClassicJsx();

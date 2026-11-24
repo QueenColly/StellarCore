@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { exposeReactForClassicJsx } from "../../support/dashboardContracts";
-import CompareCorridorsPage, { CorridorComparison } from "@/app/compare/corridors/page";
+import CompareCorridorsPage from "@/app/compare/corridors/page";
+import { CorridorComparison } from "@/components/compare/CorridorComparison";
 import type { PublicCorridor } from "@/types/api/corridors";
 
 exposeReactForClassicJsx();
