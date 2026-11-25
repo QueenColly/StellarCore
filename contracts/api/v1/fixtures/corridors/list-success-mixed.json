@@ -1,0 +1,45 @@
+{
+  "name": "corridors.list.success.mixed",
+  "domain": "corridors",
+  "endpoint": "GET /api/corridors",
+  "method": "GET",
+  "expectedStatus": 200,
+  "description": "Canonical list of corridors with mixed anchor counts",
+  "body": {
+    "corridors": [
+      {
+        "slug": "usd-cny-cn",
+        "sourceAsset": "USD",
+        "sourceCountry": "CN",
+        "destinationAsset": "CNY",
+        "destinationCountry": "CN",
+        "anchorCount": 0
+      },
+      {
+        "slug": "usdc-us-brl-br",
+        "sourceAsset": "USDC",
+        "sourceCountry": "US",
+        "destinationAsset": "BRL",
+        "destinationCountry": "BR",
+        "anchorCount": 1
+      },
+      {
+        "slug": "eur-gbp-gb",
+        "sourceAsset": "EUR",
+        "sourceCountry": "GB",
+        "destinationAsset": "GBP",
+        "destinationCountry": "GB",
+        "anchorCount": 2
+      },
+      {
+        "slug": "btc-usdt-mx",
+        "sourceAsset": "BTC",
+        "sourceCountry": "MX",
+        "destinationAsset": "USDT",
+        "destinationCountry": "MX",
+        "anchorCount": 5
+      }
+    ],
+    "count": 4
+  }
+}

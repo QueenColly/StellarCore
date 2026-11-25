@@ -1,0 +1,14 @@
+{
+  "name": "corridors.list.error_500.anchors",
+  "domain": "corridors",
+  "endpoint": "GET /api/corridors",
+  "method": "GET",
+  "expectedStatus": 500,
+  "description": "Safe internal error response on corridor directory failure for membership counts",
+  "body": {
+    "error": {
+      "code": "internal_error",
+      "message": "Unable to load corridors."
+    }
+  }
+}
