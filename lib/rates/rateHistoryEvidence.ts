@@ -11,14 +11,21 @@ import type {
  * such instead of being repaired or guessed.
  */
 
-const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
+const NUMERIC_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
-/** True when `medianRate` is a published, finite decimal string. */
+/**
+ * True when `medianRate` is a complete, finite, positive numeric string.
+ * Rejects malformed strings (e.g., "1.25oops"), non-positive values, NaN, Infinity.
+ * Accepts valid scientific notation (e.g., "1.25e-5", "5E2").
+ */
 export function isPublishedMedian(medianRate: unknown): medianRate is string {
   return (
     typeof medianRate === "string" &&
-    DECIMAL_PATTERN.test(medianRate) &&
-    Number.isFinite(Number.parseFloat(medianRate))
+    NUMERIC_STRING_PATTERN.test(medianRate) &&
+    (() => {
+      const num = Number(medianRate);
+      return Number.isFinite(num) && num > 0;
+    })()
   );
 }
 

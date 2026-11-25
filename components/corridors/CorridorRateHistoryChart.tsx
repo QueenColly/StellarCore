@@ -106,7 +106,10 @@ export function CorridorRateHistoryChart({
   }
 
   const classification = classifyHistoryPoints(history.points);
-  const validPoints = classification.plottable;
+  const validPoints = [...classification.plottable].sort((a, b) => {
+    if (a.time !== b.time) return a.time - b.time;
+    return a.originalIndex - b.originalIndex;
+  });
   const unplottedPoints = classification.unplottedIndices.map(
     (index) => history.points[index]!,
   );
