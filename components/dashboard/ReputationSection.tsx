@@ -1,4 +1,5 @@
 
+import Link from "next/link";
 import {
   getReputationApiResult,
   type ReputationApiDependencies,
@@ -84,7 +85,14 @@ export function ReputationSectionView({
               className="text-lg text-[var(--white)]"
               style={{ fontFamily: "var(--display)" }}
             >
-              {entry.anchor.name}
+              <Link
+                href={`/anchors/${entry.anchor.slug}`}
+                className="underline underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)] transition-colors"
+                target="_self"
+                rel="noopener noreferrer"
+              >
+                {entry.anchor.name}
+              </Link>
             </h3>
 
             <Badge
