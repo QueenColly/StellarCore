@@ -1,17 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { use } from "react";
 import { ProductHeader } from "@/components/ui/ProductHeader";
-import { getAnchorReputationApiResult } from "@/lib/api/reputation";
+import { getReputationApiResult } from "@/lib/api/reputation";
 import { parseReputationList } from "./InspectorClient";
-import { SectionEmpty, SectionSkeleton } from "@/components/dashboard/SectionStates";
 import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
-import type { StaleEvidenceMetadata } from "@/types/api/staleEvidence";
-
-type Metadata = {
-  title: string;
-  description: string;
-};
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -19,12 +11,6 @@ export const metadata: Metadata = {
   description:
     "Inspect reported settleP50Ms and settleP95Ms from public reputation responses for reviewed anchors. Shows the arithmetic p95 minus p50 spread and labels inconsistent percentile ordering. No database, API, credential, SEP network, settlement, firm-quote or reputation calculation changes.",
 };
-
-type Props = Readonly<{
-  searchParams?: {
-    corridor?: string | readonly string[] | undefined;
-  }
-}>;
 
 function PageShell({
   children,
@@ -72,55 +58,6 @@ function PageShell({
   );
 }
 
-function InspectionSkeleton(): React.ReactNode {
-  return (
-    <div className="space-y-6">
-      <section
-        aria-label="Settlement percentile evidence"
-        className="rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-4 sm:p-5"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <h2
-            className="text-lg text-[var(--white)]"
-            style={{ fontFamily: "var(--display)" }}
-          >
-            No anchors selected
-          </h2>
-          <span
-            className="rounded-full border border-[var(--ghost)] px-2 py-1 text-xs uppercase tracking-wide text-[var(--muted)]"
-          >
-            Pending
-          </span>
-        </div>
-        <p className="mt-2 text-xs text-[var(--muted)]">
-          Select a reviewed corridor or anchor to inspect settlement percentiles.
-        </p>
-      </section>
-      <section
-        aria-label="Settlement percentile evidence"
-        className="rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-4 sm:p-5"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <h2
-            className="text-lg text-[var(--white)]"
-            style={{ fontFamily: "var(--display)" }}
-          >
-            Loading…
-          </h2>
-          <span
-            className="rounded-full border border-[var(--ghost)] px-2 py-1 text-xs uppercase tracking-wide text-[var(--muted)]"
-          >
-            Loading
-          </span>
-        </div>
-        <p className="mt-2 text-xs text-[var(--muted)]">
-          Fetching reputation data…
-        </p>
-      </section>
-    </div>
-  );
-}
-
 /** Format milliseconds to a human-readable string, or show N/A for null. */
 function formatMs(value: number | null): string {
   if (value === null) return "N/A";
@@ -128,28 +65,8 @@ function formatMs(value: number | null): string {
   return `${value} ms`;
 }
 
-/** Format the spread, labeling inconsistent ordering. */
-function formatSpread(
-  p50Ms: number | null,
-  p95Ms: number | null,
-): string {
-  if (p50Ms === null || p95Ms === null) return "—";
-  const spread = p95Ms - p50Ms;
-  if (p95Ms < p50Ms) {
-    return `p95 (${formatMs(p95Ms)}) < p50 (${formatMs(p50Ms)}), inconsistent ordering — spread: ${formatMs(spread)} arithmetic spread`;
-  }
-  return `p95 (${formatMs(p95Ms)}) − p50 (${formatMs(p50Ms)}), spread: ${formatMs(spread)}`;
-}
-
-export default function SettlementPercentileInspectorPage({
-  searchParams,
-}: Props) {
-  const params = searchParams ?? {};
-  const corridor = params.corridor;
-
-  const listResult = use(
-    getAnchorReputationApiResult({} as { status: number; body: unknown }),
-  );
+export default async function SettlementPercentileInspectorPage() {
+  const listResult = await getReputationApiResult();
 
   if (listResult.status !== 200) {
     return (
@@ -180,7 +97,7 @@ export default function SettlementPercentileInspectorPage({
 
   const parsed = parseReputationList(listResult.body);
 
-  if (!parsed.entries.length) {
+  if (!parsed || !parsed.entries.length) {
     return (
       <PageShell
         title="Settlement percentile inspector — StellarCore"
@@ -210,7 +127,7 @@ export default function SettlementPercentileInspectorPage({
       description="Inspect reported settleP50Ms and settleP95Ms from public reputation responses for reviewed anchors."
     >
       <div className="mt-8">
-        {parsed.entries.map((entry, index) => (
+        {parsed.entries.map((entry) => (
           <section
             key={entry.anchor.slug}
             aria-label={`Settlement percentile evidence for ${entry.anchor.slug}`}
@@ -234,11 +151,11 @@ export default function SettlementPercentileInspectorPage({
             </p>
             <div className="mt-3">
               <p className="font-medium">P50 settleMs:</p>
-              <p className="mt-1">{formatMs(entry.metrics?.settleP50Ms)}</p>
+              <p className="mt-1">{formatMs(entry.metrics?.settleP50Ms ?? null)}</p>
               <p className="font-medium">P95 settleMs:</p>
-              <p className="mt-1">{formatMs(entry.metrics?.settleP95Ms)}</p>
-              {entry.metrics?.settleP95Ms !== undefined &&
-                entry.metrics?.settleP50Ms !== undefined && (
+              <p className="mt-1">{formatMs(entry.metrics?.settleP95Ms ?? null)}</p>
+              {entry.metrics?.settleP95Ms != null &&
+                entry.metrics?.settleP50Ms != null && (
                 <p className="mt-3 text-sm">
                   <strong>
                     {entry.metrics.settleP95Ms < entry.metrics.settleP50Ms ? (
@@ -252,7 +169,7 @@ export default function SettlementPercentileInspectorPage({
                 </p>
               )}
             </div>
-            <EvidenceTimestamp timestamp={entry.computedAt} />
+            <EvidenceTimestamp value={entry.computedAt} />
           </section>
         ))}
       </div>

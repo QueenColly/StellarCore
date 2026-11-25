@@ -8,14 +8,23 @@
 
 /* eslint-disable */
 
-import { isValidAnchorSlug } from "@/lib/api/anchors";
 import type {
   PublicReputation,
-  PublicReputationListResponse,
-  PublicReputationDetailResponse,
-  ReputationApiListResult,
-  ReputationApiDetailResult,
+  PublicReputationScoreBand,
+  PublicReputationState,
 } from "@/types/api/reputation";
+
+const REPUTATION_STATES: readonly PublicReputationState[] = [
+  "not_evaluated",
+  "insufficient_evidence",
+  "established",
+];
+
+const REPUTATION_SCORE_BANDS: readonly PublicReputationScoreBand[] = [
+  "green",
+  "amber",
+  "red",
+];
 
 /** Parses a single anchor's public reputation from a detail response body. */
 function parseAnchorReputation(value: unknown): PublicReputation | null {
@@ -24,7 +33,11 @@ function parseAnchorReputation(value: unknown): PublicReputation | null {
   if (!isRecord(rep.anchor)) return null;
   const { slug, name } = rep.anchor;
   if (!isString(slug) || slug.length === 0 || slug.length > 100) return null;
-  if (!isString(rep.state) || rep.state.length === 0) return null;
+  const state = REPUTATION_STATES.find((candidate) => candidate === rep.state);
+  if (!state) return null;
+  const scoreBand = REPUTATION_SCORE_BANDS.find(
+    (candidate) => candidate === rep.scoreBand,
+  );
 
   const metrics = isRecord(rep.metrics)
     ? Object.freeze({
@@ -38,26 +51,25 @@ function parseAnchorReputation(value: unknown): PublicReputation | null {
       })
     : null;
 
-  const evidence = isRecord(rep.evidence)
-    ? Object.freeze({
-        outcomeCount:
-          typeof rep.evidence.outcomeCount === "number" &&
-          Number.isInteger(rep.evidence.outcomeCount) &&
-          rep.evidence.outcomeCount >= 0
-            ? rep.evidence.outcomeCount
-            : null,
-      })
-    : null;
+  const outcomeCount = isRecord(rep.evidence)
+    ? rep.evidence.outcomeCount
+    : undefined;
+  const evidence =
+    typeof outcomeCount === "number" &&
+    Number.isInteger(outcomeCount) &&
+    outcomeCount >= 0
+      ? Object.freeze({ outcomeCount })
+      : null;
 
   return Object.freeze({
     anchor: Object.freeze({
       slug,
       name: isString(rep.anchor.name) && rep.anchor.name.trim() ? rep.anchor.name : slug,
     }),
-    state: rep.state,
+    state,
     score:
       typeof rep.score === "number" && Number.isFinite(rep.score) ? rep.score : null,
-    scoreBand: isString(rep.scoreBand) ? rep.scoreBand : null,
+    scoreBand: scoreBand ?? null,
     evidence,
     metrics,
     computedAt: isString(rep.computedAt) ? rep.computedAt : null,
@@ -80,20 +92,32 @@ function safeNumber(value: unknown): number | null {
 }
 
 /** Parses a GET /api/reputation 200 list body. */
-export function parseReputationList(body: unknown) {
+export type ParsedReputationList = Readonly<{
+  entries: readonly PublicReputation[];
+  stale?: Readonly<{ generatedAt: string | null }>;
+}>;
+
+export function parseReputationList(
+  body: unknown,
+): ParsedReputationList | null {
   if (!isRecord(body) || !Array.isArray(body.reputation)) return null;
-  const entries = body.reputation
-    .map(parseAnchorReputation)
-    .filter((entry): entry is NonNullable<typeof entries[0]> => entry !== null);
-  const degraded =
-    isRecord(body.degraded) && body.degraded.state === "stale";
+  const entries: PublicReputation[] = [];
+  for (const item of body.reputation) {
+    const entry = parseAnchorReputation(item);
+    if (entry) entries.push(entry);
+  }
+  const degraded = body.degraded;
+  const stale =
+    isRecord(degraded) && degraded.state === "stale"
+      ? {
+          generatedAt: isString(degraded.generatedAt)
+            ? degraded.generatedAt
+            : null,
+        }
+      : undefined;
   return {
     entries: Object.freeze(entries),
-    stale: degraded
-      ? { generatedAt: isString(body.degraded.generatedAt)
-          ? body.degraded.generatedAt
-          : null }
-      : undefined,
+    ...(stale ? { stale } : {}),
   };
 }
 
