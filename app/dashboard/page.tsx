@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { AnchorsSection } from "@/components/dashboard/AnchorsSection";
 import { CorridorsSection } from "@/components/dashboard/CorridorsSection";
 import { RatePanel } from "@/components/dashboard/RatePanel";
+import { RefreshEvidenceButton } from "@/components/dashboard/RefreshEvidenceButton";
 import { ReputationSection } from "@/components/dashboard/ReputationSection";
 import { SectionSkeleton } from "@/components/dashboard/SectionStates";
 import { EvidenceLegend } from "@/components/ui/EvidenceLegend";
@@ -34,6 +35,7 @@ export default function DashboardPage() {
               and reputation evaluations. Configuration is not an observation, advertised interfaces are not
               current availability, and insufficient evidence remains visible.
             </p>
+            <RefreshEvidenceButton />
           </header>
 
           <EvidenceLegend />

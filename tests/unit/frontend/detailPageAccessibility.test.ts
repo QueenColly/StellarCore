@@ -7,7 +7,8 @@ function read(relativePath: string): string {
 }
 
 const anchorPage = read("app/anchors/[slug]/page.tsx");
-const corridorPage = read("app/corridors/[slug]/page.tsx");
+// The corridor route fetches in page.tsx and renders its markup from the colocated view.
+const corridorPage = read("app/corridors/[slug]/page.tsx") + read("app/corridors/[slug]/CorridorDetailView.tsx");
 const rateEvidence = read("components/corridors/CorridorRateEvidence.tsx");
 const globalStyles = read("app/globals.css");
 
