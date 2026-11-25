@@ -148,6 +148,12 @@ export function RateObservationBreakdownView({
           {observations.length === 0 ? (
             <div className="mt-4">
               <SectionEmpty message="No individual rate observations are currently persisted for this corridor." />
+              <p
+                className="mt-2 text-xs leading-relaxed text-[var(--muted)]"
+                data-breakdown-state="valid-no-data-note"
+              >
+                This is a successful read with no persisted observations. It is not an API failure and not a zero rate.
+              </p>
             </div>
           ) : (
             <div className="mt-5">
