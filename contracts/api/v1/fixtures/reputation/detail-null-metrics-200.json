@@ -1,0 +1,24 @@
+{
+  "name": "reputation.detail_null_metrics_200",
+  "domain": "reputation",
+  "endpoint": "GET /api/reputation/:slug",
+  "method": "GET",
+  "expectedStatus": 200,
+  "description": "Reputation detail with null metrics (unavailable)",
+  "body": {
+    "reputation": {
+      "anchor": {
+        "slug": "test-anchor-4",
+        "name": "Test Anchor Four"
+      },
+      "state": "insufficient_evidence",
+      "score": null,
+      "scoreBand": null,
+      "evidence": {
+        "outcomeCount": 5
+      },
+      "metrics": null,
+      "computedAt": "2026-08-28T12:00:00.000Z"
+    }
+  }
+}

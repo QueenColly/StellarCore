@@ -1,0 +1,32 @@
+{
+  "name": "reputation.detail.zero_values_200",
+  "domain": "reputation",
+  "endpoint": "GET /api/reputation/:slug",
+  "method": "GET",
+  "expectedStatus": 200,
+  "description": "Reputation detail with zero settleP50Ms and settleP95Ms values",
+  "body": {
+    "reputation": {
+      "anchor": {
+        "slug": "test-anchor-3",
+        "name": "Test Anchor Three"
+      },
+      "state": "established",
+      "score": 70,
+      "scoreBand": "green",
+      "evidence": {
+        "outcomeCount": 15
+      },
+      "metrics": {
+        "fillRate7d": 0.8,
+        "fillRate30d": 0.75,
+        "fillRate90d": 0.7,
+        "settleP50Ms": 0,
+        "settleP95Ms": 0,
+        "slippageP50": 0,
+        "slippageP95": 0
+      },
+      "computedAt": "2026-08-28T12:00:00.000Z"
+    }
+  }
+}

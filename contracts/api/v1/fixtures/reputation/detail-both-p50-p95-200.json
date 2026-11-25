@@ -1,0 +1,32 @@
+{
+  "name": "reputation.detail.both_p50_p95_200",
+  "domain": "reputation",
+  "endpoint": "GET /api/reputation/:slug",
+  "method": "GET",
+  "expectedStatus": 200,
+  "description": "Reputation detail with both settleP50Ms and settleP95Ms present, p95 > p50",
+  "body": {
+    "reputation": {
+      "anchor": {
+        "slug": "test-anchor-1",
+        "name": "Test Anchor One"
+      },
+      "state": "established",
+      "score": 90,
+      "scoreBand": "green",
+      "evidence": {
+        "outcomeCount": 50
+      },
+      "metrics": {
+        "fillRate7d": 0.95,
+        "fillRate30d": 0.92,
+        "fillRate90d": 0.88,
+        "settleP50Ms": 1200,
+        "settleP95Ms": 4500,
+        "slippageP50": 0.001,
+        "slippageP95": 0.015
+      },
+      "computedAt": "2026-08-28T12:00:00.000Z"
+    }
+  }
+}

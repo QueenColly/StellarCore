@@ -1,0 +1,32 @@
+{
+  "name": "reputation.detail_negative_nan_200",
+  "domain": "reputation",
+  "endpoint": "GET /api/reputation/:slug",
+  "method": "GET",
+  "expectedStatus": 200,
+  "description": "Reputation detail with negative and NaN settle values",
+  "body": {
+    "reputation": {
+      "anchor": {
+        "slug": "test-anchor-6",
+        "name": "Test Anchor Six"
+      },
+      "state": "established",
+      "score": 92,
+      "scoreBand": "green",
+      "evidence": {
+        "outcomeCount": 40
+      },
+      "metrics": {
+        "fillRate7d": 0.93,
+        "fillRate30d": 0.9,
+        "fillRate90d": 0.87,
+        "settleP50Ms": -100,
+        "settleP95Ms": NaN,
+        "slippageP50": 0.001,
+        "slippageP95": 0.02
+      },
+      "computedAt": "2026-08-28T12:00:00.000Z"
+    }
+  }
+}
