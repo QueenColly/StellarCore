@@ -122,6 +122,30 @@ export default function EvidenceStatesGuidePage() {
             </p>
           </header>
 
+          <nav
+            aria-labelledby="guide-nav-heading"
+            className="mt-6 flex flex-wrap gap-2 text-sm"
+            data-evidence-guide="jump-nav"
+          >
+            <h2 id="guide-nav-heading" className="sr-only">
+              On this page
+            </h2>
+            {[
+              { href: "#evidence-chain-heading", label: "Evidence layers" },
+              { href: "#thresholds-heading", label: "Thresholds" },
+              { href: "#state-boundaries-heading", label: "State boundaries" },
+              { href: "#references-heading", label: "References" },
+            ].map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="rounded border border-[var(--ghost)] px-3 py-2 text-xs text-[var(--white)] hover:text-[var(--accent)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+
           <aside
             className="mt-6 rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-4 text-sm leading-relaxed text-[var(--white)] sm:p-5"
             aria-labelledby="explainer-only-heading"
