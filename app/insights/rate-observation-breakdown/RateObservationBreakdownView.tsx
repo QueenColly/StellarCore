@@ -173,7 +173,7 @@ export function RateObservationBreakdownView({
                       <th scope="col" className="px-3 py-2 font-medium">Destination amount ({rates.corridor.destinationAsset})</th>
                       <th scope="col" className="px-3 py-2 font-medium">Fee (as reported)</th>
                       <th scope="col" className="px-3 py-2 font-medium">Rate</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Captured</th>
+                      <th scope="col" className="px-3 py-2 font-medium">Captured (source timestamp)</th>
                       <th scope="col" className="px-3 py-2 font-medium">Freshness</th>
                       <th scope="col" className="px-3 py-2 font-medium">Median eligibility</th>
                     </tr>

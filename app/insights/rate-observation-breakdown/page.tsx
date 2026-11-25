@@ -84,7 +84,7 @@ export default async function RateObservationBreakdownPage({ searchParams }: Pro
 
   return (
     <PageShell>
-      <section aria-label="Observation evidence" className="mt-8">
+      <section aria-label="Observation evidence" aria-live="polite" className="mt-8">
         <RateObservationBreakdownView
           corridors={corridors}
           selectedCorridorSlug={selectedCorridorSlug}
