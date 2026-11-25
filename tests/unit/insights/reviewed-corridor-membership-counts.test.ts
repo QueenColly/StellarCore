@@ -175,7 +175,9 @@ test("mixed anchor count groups produce correct bin assignments", () => {
 test("raw anchor counts are deduplicated and valid", () => {
   const rawCounts = [0, 1, 1, 2, 5, -1, null, 3, 3, "invalid"];
 
-  const validCounts = rawCounts.filter((c): c is number => Number.isInteger(c) && c >= 0);
+  const validCounts = rawCounts.filter(
+    (c): c is number => typeof c === "number" && Number.isInteger(c) && c >= 0,
+  );
   const deduplicated = [...new Set(validCounts)];
 
   assert.ok(deduplicated.includes(0), "Should include 0");
