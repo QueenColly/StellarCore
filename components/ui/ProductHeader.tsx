@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
+import React from "react";
 
 type ProductHeaderProps = Readonly<{
-  current: "home" | "dashboard";
+  current: "home" | "dashboard" | "detail";
   variant?: "overlay" | "solid";
 }>;
 
