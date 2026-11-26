@@ -19,7 +19,7 @@ const DETAIL_PAGES: readonly Readonly<{ page: string; source: string }>[] = [
 
 test("both detail pages expose one main landmark that the shared skip link can reach", () => {
   for (const { page, source } of DETAIL_PAGES) {
-    assert.match(source, /<ProductHeader current="dashboard"/, `${page} must render the shared header`);
+    assert.match(source, /<ProductHeader current="detail"/, `${page} must render the shared header in detail context`);
     assert.match(source, /id="main-content"/, `${page} must expose the skip-link target`);
   }
 

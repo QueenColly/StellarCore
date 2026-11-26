@@ -23,7 +23,7 @@ type Props = Readonly<{
 export function CorridorDetailView({ corridor, ratesResult, historyResult }: Props) {
   return (
     <>
-      <ProductHeader current="dashboard" />
+      <ProductHeader current="detail" />
       <main id="main-content" className="min-h-screen bg-[var(--black)] px-4 py-8 text-[var(--white)] sm:px-8 sm:py-10 lg:px-12">
         <div className="mx-auto max-w-6xl">
           <nav aria-label="Breadcrumb" className="text-xs text-[var(--muted)]">
