@@ -96,6 +96,7 @@ test("resource-identifying filenames are deterministic and formatted by date", (
 
 test("anchor CSV formatting includes last persisted sync status and excludes live uptime claims", () => {
   assert.ok(ANCHOR_CSV_HEADERS.includes("Last Persisted Sync Status"));
+  assert.ok(ANCHOR_CSV_HEADERS.includes("Advertised Transfer Interface"));
   assert.equal(ANCHOR_CSV_HEADERS.includes("Live Uptime"), false);
   assert.equal(ANCHOR_CSV_HEADERS.includes("Operational Reliability"), false);
 
@@ -236,5 +237,37 @@ test("API failures report honest error without fabricating data", async () => {
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.ok(result.error.includes("Database temporarily offline"));
+  }
+});
+
+test("malformed directory records cannot become empty or fabricated zero-value exports", async () => {
+  const anchor = { slug: "anchor", name: "Anchor", homeDomain: "anchor.example", status: "LIVE", seps: [1] };
+  const corridor = { slug: "corridor", sourceAsset: "USDC", sourceCountry: "US", destinationAsset: "BRL", destinationCountry: "BR" };
+  for (const body of [
+    { unexpected: [] },
+    { anchors: [anchor], count: 1 },
+    { anchors: [], count: 1 },
+    { anchors: [{ ...anchor, isTransferCapable: false, corridorCount: 0, status: "unrecognized" }], count: 1 },
+  ]) {
+    const result = await fetchAllAnchors({}, async () => Response.json(body));
+    assert.equal(result.ok, false);
+  }
+  for (const body of [{ corridors: [corridor], count: 1 }, { corridors: [], count: 1 }]) {
+    const result = await fetchAllCorridors({}, async () => Response.json(body));
+    assert.equal(result.ok, false);
+  }
+});
+
+test("duplicate slugs across pages cancel export instead of inflating evidence counts", async () => {
+  const corridor: PublicCorridor = { slug: "corridor", sourceAsset: "USDC", sourceCountry: "US", destinationAsset: "BRL", destinationCountry: "BR", anchorCount: 0 };
+  const result = await fetchAllCorridors({ pageSize: 1 }, async () => Response.json({ corridors: [corridor], count: 1 }));
+  assert.equal(result.ok, false);
+});
+
+test("invalid pagination is rejected before any network request", async () => {
+  const neverFetch = async (): Promise<Response> => { assert.fail("invalid options must not fetch"); };
+  for (const options of [{ pageSize: 0 }, { pageSize: 1.5 }, { maxLimit: 1001 }]) {
+    assert.equal((await fetchAllAnchors(options, neverFetch)).ok, false);
+    assert.equal((await fetchAllCorridors(options, neverFetch)).ok, false);
   }
 });
