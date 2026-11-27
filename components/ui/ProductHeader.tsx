@@ -3,7 +3,7 @@ import Link from "next/link";
 import React from "react";
 
 type ProductHeaderProps = Readonly<{
-  current: "home" | "dashboard" | "detail";
+  current: "home" | "dashboard" | "detail" | "insights";
   variant?: "overlay" | "solid";
 }>;
 

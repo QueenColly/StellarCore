@@ -25,12 +25,12 @@ def main():
         anchors = anchors_resp.get("anchors", [])
         total_anchors = anchors_resp.get("count", 0)
 
-        print(f"Found {total_anchors} total reviewed anchor(s). Showing first {len(anchors)}:")
+        print(f"Found {total_anchors} reviewed anchor(s) in response. Showing {len(anchors)}:")
         for a in anchors:
             status = a.get("status", "UNKNOWN")
             seps = ", ".join(str(s) for s in a.get("seps", []))
             transfer = "Yes" if a.get("isTransferCapable") else "No"
-            print(f"  • {a.get('name')} ({a.get('slug')}): Status={status}, SEPs=[{seps}], TransferCapable={transfer}")
+            print(f"  • {a.get('name')} ({a.get('slug')}): Status={status}, SEPs=[{seps}], AdvertisedTransferInterface={transfer}")
 
     except StellarCoreApiError as err:
         print(f"API Error fetching anchors ({err.status_code} - {err.code}): {err.api_message}", file=sys.stderr)
@@ -46,7 +46,7 @@ def main():
         corridors = corridors_resp.get("corridors", [])
         total_corridors = corridors_resp.get("count", 0)
 
-        print(f"Found {total_corridors} total reviewed corridor(s). Showing first {len(corridors)}:")
+        print(f"Found {total_corridors} reviewed corridor(s) in response. Showing {len(corridors)}:")
         for c in corridors:
             src = f"{c.get('sourceAsset')} ({c.get('sourceCountry')})"
             dst = f"{c.get('destinationAsset')} ({c.get('destinationCountry')})"

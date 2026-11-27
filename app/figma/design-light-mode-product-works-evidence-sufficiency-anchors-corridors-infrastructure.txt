@@ -1,0 +1,9 @@
+UI/UX Design (Light Mode)
+
+Infrastructure Made Legible: Introduce StellarCore's read-only infrastructure evidence and clarify that the product does not execute transfers.
+Understand Anchors and Interfaces: Explain synchronized SEP-1 anchor metadata and advertised SEP capabilities, making clear that advertised interfaces do not establish live operational availability.
+Read Stored Corridor Evidenc: Illustrate reviewed corridor relationships and persisted indicative-rate observations, with a clear distinction between stored observations and firm quotes.
+See Whether Evidence Is Sufficient: Explain the evidence thresholds: a median requires at least two fresh, independent sources, while sparse outcomes cannot justify reputation scores. Include unavailable-median and insufficient-reputation examples.
+
+
+https://www.figma.com/design/EVlcc7eZ1qFrktyGCrZups/StellarCore-UI-UX?node-id=0-1&p=f&t=fKp3tTJoxtPvaH77-0

@@ -40,8 +40,8 @@ test("the panel labels its display as a descriptive range of stored indicative v
 });
 
 test("the panel displays minimum, maximum, absolute range, and honest empty states", () => {
-  assert.match(panelSource, /Snapshots with rates/);
-  assert.match(panelSource, /Snapshots without rates/);
+  assert.match(panelSource, /Qualifying snapshots/);
+  assert.match(panelSource, /Nonqualifying snapshots/);
   assert.match(panelSource, /Minimum rate/);
   assert.match(panelSource, /Maximum rate/);
   assert.match(panelSource, /Absolute range/);
@@ -60,4 +60,11 @@ test("the view makes no operational, transfer, firm-quote, or reputation claims"
   for (const forbidden of ["operational", "transfer", "firm quote", "reputation"]) {
     assert.doesNotMatch(combined, new RegExp(forbidden, "i"), `found forbidden claim: ${forbidden}`);
   }
+});
+
+test("each rendered range belongs to an individual snapshot", () => {
+  assert.match(panelSource, /summary\.snapshots\.map/);
+  assert.match(panelSource, /snapshot\.timestamp/);
+  assert.match(panelSource, /snapshot\.range/);
+  assert.doesNotMatch(panelSource, /summary\.(minRate|maxRate|range)\b/);
 });

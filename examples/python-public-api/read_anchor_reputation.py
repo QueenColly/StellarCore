@@ -6,8 +6,8 @@ Demonstrates reading:
 - GET /api/reputation/{anchor_slug}
 
 Important:
-- Reputation scores summarize historical evidence across availability, transfer reliability, and freshness.
-- When evidence is insufficient or degraded, score is null.
+- Reputation scores summarize persisted outcome evidence.
+- Insufficient or unevaluated evidence has no published score; stale fallback may retain a prior score.
 - Null is never coerced to 0.0.
 """
 
@@ -25,12 +25,16 @@ def main():
 
     try:
         rep_data = client.get_anchor_reputation(anchor_slug)
-        anchor_info = rep_data.get("anchor", {})
-        score = rep_data.get("score")
-        state = rep_data.get("state", "unknown")
-        components = rep_data.get("components", {})
+        reputation = rep_data["reputation"]
+        anchor_info = reputation["anchor"]
+        score = reputation["score"]
+        state = reputation["state"]
+        metrics = reputation["metrics"]
+        if rep_data.get("degraded") or rep_data.get("_evidence_state_header") == "stale":
+            print("WARNING: Retained stale reputation, not a new evaluation.")
 
-        print(f"Anchor: {anchor_info.get('name', anchor_slug)} ({anchor_info.get('homeDomain', 'unknown')})")
+        print(f"Anchor: {anchor_info['name']} ({anchor_info['slug']})")
+        print(f"Computed at: {reputation['computedAt'] or 'Unavailable'}")
         print(f"Evaluation State: {state}")
 
         if score is not None:
@@ -38,12 +42,12 @@ def main():
         else:
             print("Reputation Score: None (insufficient evidence to calculate score)")
 
-        print("\nComponent Breakdown:")
-        for comp_name, comp in components.items():
-            comp_score = comp.get("score")
-            weight = comp.get("weight", "N/A")
-            score_display = f"{comp_score}" if comp_score is not None else "None"
-            print(f"  • {comp_name.capitalize()}: Score={score_display} (Weight: {weight})")
+        print("\nPersisted metrics:")
+        if metrics is None:
+            print("  No persisted metrics.")
+        else:
+            for name, value in metrics.items():
+                print(f"  • {name}: {value if value is not None else 'Unavailable'}")
 
     except StellarCoreApiError as err:
         print(f"API Error ({err.status_code} - {err.code}): {err.api_message}", file=sys.stderr)

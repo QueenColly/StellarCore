@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 
+import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
 import { summarizeObservedRateRange } from "@/lib/rates/observedRateRange";
 import type { PublicRateHistoryResponse } from "@/types/api/rateHistory";
 import type { StaleEvidenceMetadata } from "@/types/api/staleEvidence";
@@ -33,7 +34,7 @@ export function ObservedRateRangePanel({ history, stale }: Props) {
           Cross-anchor rate ranges
         </h2>
         <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
-          {DESCRIPTIVE_RANGE_LABEL}
+          {DESCRIPTIVE_RANGE_LABEL} Each row compares observations within a single snapshot.
         </p>
       </div>
 
@@ -62,31 +63,17 @@ export function ObservedRateRangePanel({ history, stale }: Props) {
           No snapshots with two or more valid rates.
         </p>
       ) : (
+        <>
         <dl className="mt-6 grid gap-3 text-xs text-[var(--muted)] sm:grid-cols-2 lg:grid-cols-4">
           <RateRangeMetric
-            label="Snapshots with rates"
+            label="Qualifying snapshots"
             value={String(summary.qualifiedPointCount)}
             testId="observed-rate-qualified-points"
           />
           <RateRangeMetric
-            label="Snapshots without rates"
+            label="Nonqualifying snapshots"
             value={String(summary.excludedPointCount)}
             testId="observed-rate-excluded-points"
-          />
-          <RateRangeMetric
-            label="Minimum rate"
-            value={summary.minRate ?? "No qualifying snapshots"}
-            testId="observed-rate-min"
-          />
-          <RateRangeMetric
-            label="Maximum rate"
-            value={summary.maxRate ?? "No qualifying snapshots"}
-            testId="observed-rate-max"
-          />
-          <RateRangeMetric
-            label="Absolute range"
-            value={summary.range ?? "No qualifying snapshots"}
-            testId="observed-rate-range"
           />
           <RateRangeMetric
             label="Excluded rates"
@@ -94,6 +81,29 @@ export function ObservedRateRangePanel({ history, stale }: Props) {
             testId="observed-rate-excluded-rates"
           />
         </dl>
+        <div className="mt-6 overflow-x-auto focus-visible:outline-2" role="region" aria-label="Per-snapshot rate ranges" tabIndex={0}>
+          <table className="w-full text-left text-sm">
+            <caption className="sr-only">Descriptive rate ranges within qualifying snapshots</caption>
+            <thead>
+              <tr className="border-b border-[var(--ghost)]">
+                {["Snapshot time (UTC)", "Minimum rate", "Maximum rate", "Absolute range"].map((label) => (
+                  <th key={label} scope="col" className="p-3">{label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {summary.snapshots.map((snapshot, index) => (
+                <tr key={`${snapshot.timestamp}-${index}`} className="border-b border-[var(--ghost)]">
+                  <th scope="row" className="p-3 font-normal"><EvidenceTimestamp value={snapshot.timestamp} /></th>
+                  <td className="p-3 font-mono">{snapshot.minRate}</td>
+                  <td className="p-3 font-mono">{snapshot.maxRate}</td>
+                  <td className="p-3 font-mono">{snapshot.range}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        </>
       )}
     </section>
   );

@@ -66,6 +66,7 @@ export function describeDataAge(evaluatedAt: string, now: Date): string {
   const evaluatedMs = new Date(evaluatedAt).getTime();
   if (!Number.isFinite(evaluatedMs)) return "of unknown age";
   const ageMs = now.getTime() - evaluatedMs;
+  if (ageMs < 0) return "ahead of evaluation time";
   if (ageMs < MINUTE_MS) return "less than a minute old";
   const [value, unit] =
     ageMs < HOUR_MS

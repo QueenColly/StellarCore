@@ -7,6 +7,7 @@ import { getAnchorApiResult } from "@/lib/api/anchors";
 import { getAnchorReputationApiResult } from "@/lib/api/reputation";
 import { advertisedCapabilities } from "@/lib/stellar/advertisedCapabilities";
 import { ProductHeader } from "@/components/ui/ProductHeader";
+import { ReputationMetricsList } from "@/components/reputation/ReputationMetricsList";
 import type { PublicAnchorStatus } from "@/types/api/anchors";
 import type {
   PublicReputation,
@@ -22,13 +23,17 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const result = await getAnchorApiResult(slug);
-  if (result.status !== 200) return { title: "Anchor not found — StellarCore" };
-
-  const { anchor } = result.body;
-  return {
-    title: `${anchor.name} — StellarCore`,
-    description: `Read-only anchor detail for ${anchor.name} (${anchor.homeDomain}).`,
-  };
+  if (result.status === 200) {
+    const { anchor } = result.body;
+    return {
+      title: `${anchor.name} — StellarCore`,
+      description: `Read-only anchor detail for ${anchor.name} (${anchor.homeDomain}).`,
+    };
+  }
+  if (result.status === 400 || result.status === 404) {
+    return { title: "Anchor not found — StellarCore" };
+  }
+  return { title: "Anchor unavailable — StellarCore" };
 }
 
 export default async function AnchorPage({ params }: Props) {
@@ -224,34 +229,7 @@ function ReputationEvidence({ reputation }: { reputation: PublicReputation }) {
         </p>
       ) : null}
 
-      {reputation.metrics ? (
-        <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[var(--ghost)] pt-3 text-xs text-[var(--muted)]">
-          <div>
-            <dt>Fill rate 7d</dt>
-            <dd className="text-[var(--white)]">{formatMetric(reputation.metrics.fillRate7d)}</dd>
-          </div>
-          <div>
-            <dt>Fill rate 30d</dt>
-            <dd className="text-[var(--white)]">{formatMetric(reputation.metrics.fillRate30d)}</dd>
-          </div>
-          <div>
-            <dt>Fill rate 90d</dt>
-            <dd className="text-[var(--white)]">{formatMetric(reputation.metrics.fillRate90d)}</dd>
-          </div>
-          <div>
-            <dt>Settlement p50</dt>
-            <dd className="text-[var(--white)]">{formatMs(reputation.metrics.settleP50Ms)}</dd>
-          </div>
-          <div>
-            <dt>Settlement p95</dt>
-            <dd className="text-[var(--white)]">{formatMs(reputation.metrics.settleP95Ms)}</dd>
-          </div>
-          <div>
-            <dt>Slippage p50</dt>
-            <dd className="text-[var(--white)]">{formatMetric(reputation.metrics.slippageP50)}</dd>
-          </div>
-        </dl>
-      ) : null}
+      {reputation.metrics ? <ReputationMetricsList metrics={reputation.metrics} /> : null}
 
       {reputation.computedAt ? (
         <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--muted)]">
@@ -299,14 +277,6 @@ function bandTone(band: PublicReputationScoreBand) {
     case "red":
       return "negative" as const;
   }
-}
-
-function formatMetric(value: number | null): string {
-  return value === null ? "—" : String(value);
-}
-
-function formatMs(value: number | null): string {
-  return value === null ? "—" : `${value} ms`;
 }
 
 type BadgeTone = "positive" | "warning" | "negative" | "neutral";

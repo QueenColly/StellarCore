@@ -13,7 +13,7 @@ export const ANCHOR_CSV_HEADERS: readonly string[] = Object.freeze([
   "Home Domain",
   "Last Persisted Sync Status",
   "Advertised SEPs",
-  "Transfer Capable",
+  "Advertised Transfer Interface",
   "Corridor Count",
 ]);
 
@@ -42,8 +42,8 @@ export function formatAnchorRow(anchor: PublicAnchorSummary): readonly unknown[]
     anchor.homeDomain ?? "",
     anchor.status ?? "UNKNOWN",
     seps,
-    Boolean(anchor.isTransferCapable),
-    Number(anchor.corridorCount ?? 0),
+    anchor.isTransferCapable,
+    anchor.corridorCount,
   ]);
 }
 
@@ -57,7 +57,7 @@ export function formatCorridorRow(corridor: PublicCorridor): readonly unknown[] 
     corridor.sourceCountry ?? "",
     corridor.destinationAsset ?? "",
     corridor.destinationCountry ?? "",
-    Number(corridor.anchorCount ?? 0),
+    corridor.anchorCount,
   ]);
 }
 

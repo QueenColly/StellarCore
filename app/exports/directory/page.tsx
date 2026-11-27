@@ -117,7 +117,7 @@ export default function DirectoryExportPage() {
               Export reviewed anchors with identifiers, home domains, advertised SEPs, last persisted sync status, and corridor counts.
             </p>
             <dl className="mt-4 text-xs text-[var(--muted)] space-y-1">
-              <div><dt className="inline font-medium text-[var(--white)]">Fields: </dt><dd className="inline">Slug, Name, Home Domain, Last Persisted Sync Status, Advertised SEPs, Transfer Capable, Corridor Count</dd></div>
+              <div><dt className="inline font-medium text-[var(--white)]">Fields: </dt><dd className="inline">Slug, Name, Home Domain, Last Persisted Sync Status, Advertised SEPs, Advertised Transfer Interface, Corridor Count</dd></div>
               <div><dt className="inline font-medium text-[var(--white)]">Safety limit: </dt><dd className="inline">Capped at 1,000 items per export</dd></div>
             </dl>
             <div className="mt-6">
@@ -213,7 +213,7 @@ export default function DirectoryExportPage() {
 
               {successInfo.isPartial && (
                 <p className="mt-2 text-xs text-amber-300">
-                  ⚠️ Note: Export reached the safety pagination limit. Results are partial.
+                  ⚠️ Note: Export reached the safety pagination limit. Results may be partial.
                 </p>
               )}
 

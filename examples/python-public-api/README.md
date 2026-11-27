@@ -8,14 +8,14 @@ the public, read-only GET endpoints of StellarCore.
 1. **Standard Library Only:** Requires only Python 3.9+ with zero third-party packages (`urllib`, `json`, `unittest`).
 2. **Read-Only GET:** Connects exclusively to public GET routes (`/api/anchors`, `/api/corridors`, `/api/rates`, `/api/reputation`). Never attempts write operations, mutations, or cron triggers.
 3. **Indicative Evidence:** All rates and reputation metrics are market observation evidence. They are **not** live executable transfer quotes or guarantees of settlement availability.
-4. **Honest Null Handling:** When fresh sources are insufficient or evidence is unavailable, `medianRate` and reputation `score` are `null`. These values are preserved as `None` in Python and **never** coerced to `0` or `0.0`.
+4. **Honest Null Handling:** When evidence is insufficient, `medianRate` or reputation `score` is `null`; a stale fallback can retain a previous value and must be labelled stale. These values are preserved as `None` in Python and **never** coerced to `0` or `0.0`.
 
 ## Files
 
 - `client.py`: Reusable standard-library client class (`StellarCoreClient`) with custom exception types (`StellarCoreApiError`, `StellarCoreNetworkError`, `StellarCoreResponseError`).
 - `list_directory.py`: Example script reading reviewed anchors and corridors.
 - `read_corridor_rates.py`: Example script reading indicative corridor rate snapshots and 30-day rate history.
-- `read_anchor_reputation.py`: Example script reading anchor reputation scores and component breakdowns.
+- `read_anchor_reputation.py`: Example script reading anchor reputation scores and persisted metrics.
 - `test_client.py`: Offline `unittest` test suite with complete mock fixtures for success, null states, and error handling.
 
 ## Running the Offline Tests
@@ -39,7 +39,7 @@ export STELLARCORE_BASE_URL="http://localhost:3000"
 python list_directory.py
 
 # Read indicative rate for a corridor
-python read_corridor_rates.py usdc-ngn
+python read_corridor_rates.py usdc-us-brl-br
 
 # Read reputation for an anchor
 python read_anchor_reputation.py cowrie
