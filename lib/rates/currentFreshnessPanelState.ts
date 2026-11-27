@@ -18,7 +18,7 @@ export type CurrentFreshnessPanelEvent =
 
 const NO_RATES_EVALUATED_AT = new Date(0).toISOString();
 
-function placeholderRates(corridorSlug: string): PublicRatesResponse {
+export function placeholderRates(corridorSlug: string): PublicRatesResponse {
   return {
     corridor: {
       slug: corridorSlug,

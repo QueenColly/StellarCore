@@ -61,18 +61,24 @@ export function computeHistoricalSourceCounts(
 ): HistoricalSourceCounts {
   const { points, evaluatedAt, windowDays, corridor } = response;
   const totalPoints = points.length;
-  const buckets: Record<BucketLabel, SourceCountBucket> = Object.fromEntries(
-    BUCKET_LABELS.map((label) => [
-      label,
-      Object.freeze({
-        label,
-        distinctAnchorCount: label === "3+" ? 3 : Number(label),
-        count: 0,
-        percent: null,
-        pointIndices: [] as number[],
-      }),
-    ]),
-  ) as Record<BucketLabel, SourceCountBucket>;
+  type MutableBucket = {
+    label: BucketLabel;
+    distinctAnchorCount: number;
+    count: number;
+    pointIndices: number[];
+  };
+  const makeBucket = (label: BucketLabel): MutableBucket => ({
+    label,
+    distinctAnchorCount: label === "3+" ? 3 : Number(label),
+    count: 0,
+    pointIndices: [],
+  });
+  const buckets: Record<BucketLabel, MutableBucket> = {
+    "0": makeBucket("0"),
+    "1": makeBucket("1"),
+    "2": makeBucket("2"),
+    "3+": makeBucket("3+"),
+  };
 
   const mismatches: SourceCountMismatch[] = [];
 
@@ -101,6 +107,7 @@ export function computeHistoricalSourceCounts(
       totalPoints === 0 ? null : (bucket.count / totalPoints) * 100;
     return Object.freeze({
       ...bucket,
+      pointIndices: Object.freeze([...bucket.pointIndices]),
       percent,
     });
   });

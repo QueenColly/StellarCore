@@ -8,6 +8,7 @@ import {
 import {
   initialCurrentFreshnessPanelState,
   currentFreshnessPanelReducer,
+  placeholderRates,
 } from "@/lib/rates/currentFreshnessPanelState";
 import {
   computeCurrentFreshnessBreakdown,
@@ -46,17 +47,7 @@ export function CurrentFreshnessBreakdownView({
 }: Props) {
   const [panel, dispatch] = useReducer(
     currentFreshnessPanelReducer,
-    initialRates ?? {
-      corridor: {
-        slug: selectedCorridorSlug,
-        sourceAsset: "",
-        sourceCountry: "",
-        destinationAsset: "",
-        destinationCountry: "",
-      },
-      evaluatedAt: NO_RATES_EVALUATED_AT,
-      observations: [],
-    },
+    initialRates ?? placeholderRates(selectedCorridorSlug),
     initialCurrentFreshnessPanelState,
   );
   const { displayed: rates, loading, failure } = panel;

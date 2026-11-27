@@ -133,7 +133,7 @@ export function isValidFreshnessState(value: unknown): value is RateFreshnessSta
   return typeof value === "string" && FRESHNESS_STATES.includes(value as RateFreshnessState);
 }
 
-export function describeDegraded(metadata: StaleEvidenceMetadata | undefined): string {
+export function describeDegraded(metadata: StaleEvidenceMetadata | null | undefined): string {
   if (!metadata) return "Fresh evidence";
   const age = metadata.snapshotAgeMs;
   const ageText =
