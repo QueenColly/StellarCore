@@ -12,6 +12,13 @@ import {
   initialRateHistoryPanelState,
   rateHistoryPanelReducer,
 } from "@/lib/rates/rateHistoryPanelState";
+import { historyToCsv } from "@/lib/rates/historyCsv";
+import {
+  classifyHistoryPoints,
+  describeDuration,
+  describeStaleFallback,
+  type StaleFallbackDisclosure,
+} from "@/lib/rates/rateHistoryEvidence";
 import type {
   PublicRateHistoryPoint,
   PublicRateHistoryResponse,
@@ -50,6 +57,7 @@ export function CorridorRateHistoryChart({
   const { displayed: history, selectedDays, loading, failure } = panel;
   const displayedDays = history.windowDays;
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+  const [exportCsv, setExportCsv] = useState<string | null>(null);
   const loaderRef = useRef<RateHistoryLoader | null>(null);
 
   useEffect(() => {
@@ -91,34 +99,18 @@ export function CorridorRateHistoryChart({
     void loaderRef.current?.load(days);
   }
 
-  const validPoints = history.points
-    .map((point, index) => {
-      const rateNum =
-        point.medianRate !== null
-          ? Number.parseFloat(point.medianRate)
-          : null;
-      const timeNum = new Date(point.timestamp).getTime();
+  function handleExportCsv() {
+    if (loading || !history.points.length) return;
+    const csv = historyToCsv(corridorSlug, history);
+    setExportCsv(csv);
+  }
 
-      return {
-        point,
-        originalIndex: index,
-        rate: rateNum,
-        time: timeNum,
-      };
-    })
-    .filter(
-      (
-        item,
-      ): item is {
-        point: PublicRateHistoryPoint;
-        originalIndex: number;
-        rate: number;
-        time: number;
-      } =>
-        item.rate !== null &&
-        Number.isFinite(item.rate) &&
-        Number.isFinite(item.time),
-    );
+  const classification = classifyHistoryPoints(history.points);
+  const validPoints = classification.plottable;
+  const unplottedPoints = classification.unplottedIndices.map(
+    (index) => history.points[index]!,
+  );
+  const staleFallback = describeStaleFallback(history);
 
   const evaluatedAtTime = new Date(history.evaluatedAt).getTime();
   const minWindowTime =
@@ -281,6 +273,18 @@ export function CorridorRateHistoryChart({
         </div>
       </div>
 
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={loading || !history.points.length}
+            className="rounded bg-[var(--accent)] px-4 py-2 font-medium text-sm text-[var(--white)] hover:bg-[color:mix(in_srgb,var(--accent)_10%,var(--black))] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            aria-label="Export rate history CSV"
+            title="Export rate history CSV"
+          >
+            Export CSV
+          </button>
+        </div>
+
       <div
         aria-busy={loading}
         className="mt-5 rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-5"
@@ -322,6 +326,12 @@ export function CorridorRateHistoryChart({
           </div>
         </div>
 
+        <StaleFallbackNotice
+          disclosure={staleFallback}
+          evaluatedAt={history.evaluatedAt}
+          windowDays={displayedDays}
+        />
+
         {failure ? (
           <div
             role="alert"
@@ -346,16 +356,49 @@ export function CorridorRateHistoryChart({
           </div>
         ) : null}
 
-        {validPoints.length === 0 ? (
-          <div className="py-12 text-center text-sm text-[var(--muted)]">
+        {classification.presentation === "no_snapshots" ? (
+          <div
+            role="status"
+            data-testid="rate-history-no-snapshots"
+            className="py-12 text-center text-sm text-[var(--muted)]"
+          >
             <p>
-              No historical rate snapshots recorded for the {displayedDays}-day
-              window.
+              No historical rate snapshots were returned for the{" "}
+              {displayedDays}-day window.
             </p>
             <p className="mt-1 text-xs text-[var(--muted)]">
               Rates are plotted only when independent anchors quote on this
               corridor.
             </p>
+          </div>
+        ) : classification.presentation === "no_published_median" ? (
+          <div data-testid="rate-history-no-published-median" className="mt-4">
+            <div
+              role="status"
+              className="rounded border border-[var(--ghost)] p-4 text-sm text-[var(--muted)]"
+            >
+              <p className="text-[var(--white)]">
+                {classification.snapshotCount} stored{" "}
+                {classification.snapshotCount === 1 ? "snapshot" : "snapshots"}{" "}
+                in the {displayedDays}-day window, but none has a published
+                median rate to plot.
+              </p>
+              <p className="mt-1 text-xs">
+                A median is published only when enough fresh, independent
+                anchor sources quote on this corridor at the same snapshot.
+                These snapshots are recorded; they did not meet that
+                requirement
+                {classification.invalidCount > 0
+                  ? `, and ${classification.invalidCount} carried median data that could not be read as a rate`
+                  : ""}
+                .
+              </p>
+            </div>
+            <UnplottedSnapshotList
+              points={unplottedPoints}
+              heading="Stored snapshots without a published median"
+              defaultOpen
+            />
           </div>
         ) : (
           <div className="mt-4">
@@ -617,9 +660,167 @@ export function CorridorRateHistoryChart({
                 </p>
               )}
             </div>
+
+            {unplottedPoints.length > 0 ? (
+              <UnplottedSnapshotList
+                points={unplottedPoints}
+                heading={`${unplottedPoints.length} stored ${
+                  unplottedPoints.length === 1 ? "snapshot" : "snapshots"
+                } not plotted (no published median)`}
+              />
+            ) : null}
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+function formatTimestamp(value: string): string {
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : "Unknown time";
+}
+
+/**
+ * Discloses that the displayed history is a last-known-good fallback served
+ * while the database was unavailable. Derived only from `history.degraded`, so
+ * it stays visible when a later refresh fails and this response is retained.
+ */
+function StaleFallbackNotice({
+  disclosure,
+  evaluatedAt,
+  windowDays,
+}: Readonly<{
+  disclosure: StaleFallbackDisclosure;
+  evaluatedAt: string;
+  windowDays: number;
+}>) {
+  if (disclosure.kind === "fresh") return null;
+
+  return (
+    <div
+      role="status"
+      aria-labelledby="rate-history-stale-heading"
+      data-testid="rate-history-stale-fallback"
+      data-stale-kind={disclosure.kind}
+      className="mt-4 rounded border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] p-4 text-sm text-[#f59e0b]"
+    >
+      <p id="rate-history-stale-heading" className="font-medium">
+        Stale fallback: showing a previously saved {windowDays}-day history
+      </p>
+      <p className="mt-1 text-xs">
+        The history database was temporarily unavailable, so this is the last
+        successfully generated copy of this window, not a fresh read.
+      </p>
+      {disclosure.kind === "stale" ? (
+        <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+          <div>
+            <dt className="inline">Originally evaluated: </dt>
+            <dd className="inline text-[var(--white)]">
+              <time dateTime={evaluatedAt}>{formatTimestamp(evaluatedAt)}</time>
+            </dd>
+          </div>
+          <div>
+            <dt className="inline">Fallback copy generated: </dt>
+            <dd className="inline text-[var(--white)]">
+              <time dateTime={disclosure.generatedAt}>
+                {formatTimestamp(disclosure.generatedAt)}
+              </time>
+            </dd>
+          </div>
+          <div>
+            <dt className="inline">Latest source capture: </dt>
+            <dd className="inline text-[var(--white)]">
+              {disclosure.latestSourceCapturedAt ? (
+                <time dateTime={disclosure.latestSourceCapturedAt}>
+                  {formatTimestamp(disclosure.latestSourceCapturedAt)}
+                </time>
+              ) : (
+                "None recorded"
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline">Age when served: </dt>
+            <dd className="inline text-[var(--white)]">
+              {disclosure.snapshotAgeMs === null
+                ? "Unknown"
+                : describeDuration(disclosure.snapshotAgeMs)}
+            </dd>
+          </div>
+        </dl>
+      ) : (
+        <p className="mt-2 text-xs">
+          The fallback metadata is missing or malformed, so the generation and
+          capture times of this copy cannot be confirmed. Originally evaluated{" "}
+          <time dateTime={evaluatedAt}>{formatTimestamp(evaluatedAt)}</time>.
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-[var(--muted)]">
+        Times above describe when the data was generated or captured, not your
+        current viewing time.
+      </p>
+    </div>
+  );
+}
+
+/** Keyboard-accessible disclosure of recorded snapshots that are not plotted. */
+function UnplottedSnapshotList({
+  points,
+  heading,
+  defaultOpen = false,
+}: Readonly<{
+  points: readonly PublicRateHistoryPoint[];
+  heading: string;
+  defaultOpen?: boolean;
+}>) {
+  return (
+    <details
+      open={defaultOpen}
+      data-testid="rate-history-unplotted-snapshots"
+      className="mt-4 rounded border border-[var(--ghost)] p-3 text-xs text-[var(--muted)]"
+    >
+      <summary className="cursor-pointer font-medium text-[var(--white)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+        {heading}
+      </summary>
+      <ul className="mt-3 space-y-3">
+        {points.map((point, index) => (
+          <li
+            key={`${point.timestamp}-${index}`}
+            className="border-t border-[var(--ghost)] pt-2 first:border-0 first:pt-0"
+          >
+            <p className="text-[var(--white)]">
+              <time dateTime={point.timestamp}>
+                {formatTimestamp(point.timestamp)}
+              </time>
+            </p>
+            <p className="mt-0.5">
+              Median:{" "}
+              {point.medianRate === null
+                ? "Not published"
+                : "Unreadable median value"}{" "}
+              · State:{" "}
+              {point.state === "healthy"
+                ? "Healthy"
+                : point.state === "insufficient_fresh_sources"
+                  ? "Insufficient fresh sources"
+                  : "Unrecognised"}{" "}
+              · {point.freshSourceCount} fresh of {point.sourceCount} sources
+            </p>
+            <p className="mt-0.5 break-words">
+              Observations:{" "}
+              {point.observations.length === 0
+                ? "None recorded"
+                : point.observations
+                    .map(
+                      (observation) =>
+                        `${observation.anchor.name} (${observation.rate})`,
+                    )
+                    .join(", ")}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

@@ -56,7 +56,7 @@ function main() {
 
   const result = spawnSync(
     process.execPath,
-    ["--import", "tsx", "--test", ...flags, ...testFiles],
+    ["--experimental-test-module-mocks", "--import", "tsx", "--test", ...flags, ...testFiles],
     {
       stdio: "inherit",
       env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? "test" },

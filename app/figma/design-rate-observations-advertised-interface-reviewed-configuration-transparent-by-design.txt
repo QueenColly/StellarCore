@@ -1,0 +1,8 @@
+UI/UX Design (Light Mode)
+
+Rate Observations: Present stored SEP-38 indicative rates alongside their observation timestamps and source counts. Include clear handling for unavailable medians and conditional data freshness without implying live rates.
+Advertised Interface: Show interfaces obtained from the last successful SEP-1 synchronization, with clear messaging that advertised capabilities do not confirm current operational availability.
+Reviewed Configuration: Organize reviewed anchors, corridors, and rate sources while keeping configured values visually separate from persisted observations.
+Transparent By Design: Communicate evidence origins, uncertainty, and product limitations so users can distinguish verified information from assumptions or unavailable evidence.
+
+https://www.figma.com/design/EVlcc7eZ1qFrktyGCrZups/StellarCore-UI-UX?node-id=0-1&p=f&t=fKp3tTJoxtPvaH77-0

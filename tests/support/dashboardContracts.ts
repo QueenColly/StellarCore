@@ -150,6 +150,7 @@ export const DASHBOARD_PANEL_CONTRACTS: readonly DashboardPanelContract[] = [
       { path: "reputation[].metrics.settleP50Ms", type: "number", nullable: true },
       { path: "reputation[].metrics.settleP95Ms", type: "number", nullable: true },
       { path: "reputation[].metrics.slippageP50", type: "number", nullable: true },
+      { path: "reputation[].metrics.slippageP95", type: "number", nullable: true },
       { path: "reputation[].computedAt", type: "string", nullable: true },
     ],
   },
