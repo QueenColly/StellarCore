@@ -1,6 +1,6 @@
-const { describe, it } = require('node:test');
-const assert = require('node:assert/strict');
-const {
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
   ApiError,
   safePublicGet,
   getAnchors,
@@ -13,7 +13,7 @@ const {
   getReputationBySlug,
   validateSlug,
   validateDays,
-} = require('../client');
+} from '../client.js';
 
 function createMockFetch({ status = 200, statusText = 'OK', headers = {}, body = {} } = {}) {
   const headerMap = new Map();

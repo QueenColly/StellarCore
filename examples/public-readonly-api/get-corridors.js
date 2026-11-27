@@ -12,7 +12,8 @@
  * - Validating slug input format
  */
 
-const { getCorridors, getCorridorBySlug } = require('./client');
+import { getCorridors, getCorridorBySlug } from './client.js';
+import { pathToFileURL } from 'node:url';
 
 async function main() {
   const slug = process.argv[2];
@@ -38,8 +39,8 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
 
-module.exports = { main };
+export { main };

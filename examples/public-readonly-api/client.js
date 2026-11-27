@@ -173,7 +173,7 @@ async function getReputationBySlug(slug, { baseUrl, fetchFn } = {}) {
   return safePublicGet(`/api/reputation/${encodeURIComponent(validSlug)}`, { baseUrl, fetchFn });
 }
 
-module.exports = {
+export {
   ApiError,
   DEFAULT_BASE_URL,
   safePublicGet,

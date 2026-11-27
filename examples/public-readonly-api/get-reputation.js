@@ -12,7 +12,8 @@
  * - Handling missing evidence, null scores, rate limits (429), and degraded states
  */
 
-const { getReputation, getReputationBySlug } = require('./client');
+import { getReputation, getReputationBySlug } from './client.js';
+import { pathToFileURL } from 'node:url';
 
 async function main() {
   const slug = process.argv[2];
@@ -90,8 +91,8 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
 
-module.exports = { main };
+export { main };

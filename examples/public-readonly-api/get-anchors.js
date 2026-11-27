@@ -12,7 +12,8 @@
  * - Handling missing anchors (404) and rate limits (429)
  */
 
-const { getAnchors, getAnchorBySlug } = require('./client');
+import { getAnchors, getAnchorBySlug } from './client.js';
+import { pathToFileURL } from 'node:url';
 
 async function main() {
   const slug = process.argv[2];
@@ -38,8 +39,8 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
 
-module.exports = { main };
+export { main };

@@ -12,7 +12,8 @@
  * - Handling rate limits (429) and server degraded flags
  */
 
-const { getRateHistory } = require('./client');
+import { getRateHistory } from './client.js';
+import { pathToFileURL } from 'node:url';
 
 async function main() {
   const corridor = process.argv[2] || 'usdc-brl';
@@ -60,8 +61,8 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
 
-module.exports = { main };
+export { main };
