@@ -113,7 +113,7 @@ function countryPoint(countryCode: string) {
   ];
 }
 
-function NetworkMap({ reviewedCorridors }: { reviewedCorridors: readonly ReviewedCorridor[] }) {
+export function NetworkMap({ reviewedCorridors }: { reviewedCorridors: readonly ReviewedCorridor[] }) {
   const mappedCorridors = reviewedCorridors.flatMap((corridor) => {
     const from = countryPoint(corridor.countryFrom);
     const to = countryPoint(corridor.countryTo);
@@ -180,7 +180,13 @@ function NetworkMap({ reviewedCorridors }: { reviewedCorridors: readonly Reviewe
       <ul className="map-corridor-list" aria-label="Reviewed corridor configuration">
         {reviewedCorridors.map((corridor) => (
           <li key={corridor.slug}>
-            <span>{corridorLabel(corridor)}</span>
+            <Link
+              className="map-corridor-link underline-offset-4 transition-colors hover:text-[var(--accent)] hover:underline focus-visible:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              href={`/corridors/${encodeURIComponent(corridor.slug)}`}
+            >
+              {corridorLabel(corridor)}
+              <span className="sr-only"> — view reviewed corridor evidence</span>
+            </Link>
             <small>{corridor.countryFrom === corridor.countryTo ? "local geography" : "cross-country geography"}</small>
           </li>
         ))}
