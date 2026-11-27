@@ -17,7 +17,12 @@ export function formatEvidenceTimestamp(
     return "Unavailable";
   }
 
-  return `${date.toISOString().replace("T", " ").replace(/\.000Z$/, "Z")} UTC`;
+  const label = date.toISOString()
+    .replace("T", " ")
+    .replace(/\.000Z$/, "Z")
+    .replace(/Z$/, "");
+
+  return `${label} UTC`;
 }
 
 export function EvidenceTimestamp({ value }: Props) {
