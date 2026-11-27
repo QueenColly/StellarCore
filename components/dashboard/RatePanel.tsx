@@ -11,6 +11,10 @@ import {
   SectionError,
 } from "@/components/dashboard/SectionStates";
 import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
+import {
+  StaleEvidenceNotice,
+  readDegradedMetadata,
+} from "@/components/dashboard/StaleEvidenceNotice";
 
 const FEATURED_CORRIDOR_SLUG = "usdc-us-brl-br";
 const FEATURED_CORRIDOR_HREF = `/corridors/${encodeURIComponent(FEATURED_CORRIDOR_SLUG)}`;
@@ -92,6 +96,11 @@ export function RatePanelView({
     evaluatedAt,
   } = result.body;
 
+  // A degraded 200 carries a retained last-known-good snapshot. Its median and
+  // state are shown, but never as a newly verified database read.
+  const degraded = readDegradedMetadata(result);
+  const retained = degraded !== null;
+
   const candidateLabel = `${reviewedCandidateConfiguration.candidateCount} configured ${
     reviewedCandidateConfiguration.candidateCount === 1
       ? "candidate"
@@ -117,7 +126,16 @@ export function RatePanelView({
     .at(-1);
 
   return (
-    <div className="rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-6">
+    <div
+      className="rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-6"
+      data-evidence-freshness={retained ? "stale" : undefined}
+    >
+      {degraded ? (
+        <div className="mb-5">
+          <StaleEvidenceNotice metadata={degraded} subject="this corridor's rate evidence" />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3
@@ -128,9 +146,16 @@ export function RatePanelView({
             {corridor.destinationAsset} ({corridor.destinationCountry})
           </h3>
 
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            Evaluated <EvidenceTimestamp value={evaluatedAt} />
-          </p>
+          {retained ? (
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Originally evaluated <EvidenceTimestamp value={evaluatedAt} />{" "}
+              (retained snapshot, not re-evaluated)
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Evaluated <EvidenceTimestamp value={evaluatedAt} />
+            </p>
+          )}
 
           <p
             className="mt-1 text-xs text-[var(--muted)]"
@@ -146,8 +171,12 @@ export function RatePanelView({
 
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <Badge
-            tone={state === "healthy" ? "positive" : "warning"}
-            label={state.replace(/_/g, " ")}
+            tone={state === "healthy" && !retained ? "positive" : "warning"}
+            label={
+              retained
+                ? `Retained: ${state.replace(/_/g, " ")}`
+                : state.replace(/_/g, " ")
+            }
           />
           <CorridorEvidenceLink />
         </div>
@@ -156,7 +185,7 @@ export function RatePanelView({
       <dl className="mt-6 grid grid-cols-1 gap-4 border-t border-[var(--ghost)] pt-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
         <div>
           <dt className="text-xs uppercase tracking-wide text-[var(--muted)]">
-            Median rate
+            {retained ? "Median rate (retained snapshot)" : "Median rate"}
           </dt>
 
           <dd

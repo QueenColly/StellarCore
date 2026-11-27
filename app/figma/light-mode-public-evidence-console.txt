@@ -1,0 +1,19 @@
+UI/UX Design (Light Mode)
+
+Design Scope
+
+- Created desktop and mobile layouts for the Public Evidence Console.
+- Added a console heading and introductory overview copy.
+- Designed four evidence-category summaries covering:
+  * Synchronized anchor metadata.
+  * Reviewed corridors.
+  * Stored USDC → BRL rate observations.
+  * Reputation evaluations.
+- Established clear visual distinctions between reviewed configuration, stored observations, and evaluations.
+- Applied consistent typography, accessible contrast, logical content hierarchy, and responsive layouts.
+- Used editable, clearly named Figma layers and reusable styles/components where appropriate.
+
+
+
+https://www.figma.com/design/EVlcc7eZ1qFrktyGCrZups/StellarCore-UI-UX?node-id=0-1&p=f&t=fKp3tTJoxtPvaH77-0
+

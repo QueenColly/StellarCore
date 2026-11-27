@@ -14,7 +14,7 @@ Read-only anchor, corridor, rate, and reputation visibility for Stellar.
 
 ## The Problem
 
-The Stellar network has dozens of anchors — companies like MoneyGram, Cowrie, and others that handle USDC off-ramps to local currencies across Nigeria, Kenya, Ghana, Mexico, and more. But there is no single source of truth for:
+The Stellar network has anchors — companies like MoneyGram, Cowrie, and Zeam that handle USDC and local currency off-ramps across different regions. But there is no single source of truth for:
 
 - Which anchors support a given corridor
 - What reviewed rate observations are currently available
@@ -70,9 +70,9 @@ graph TB
     end
 
     subgraph PUBAPI["Public REST API"]
-        PA1["GET /api/anchors"]
-        PA2["GET /api/rates"]
-        PA3["GET /api/corridors"]
+        PA1["GET /api/anchors and /api/anchors/:slug"]
+        PA2["GET /api/rates and /api/rates/history"]
+        PA3["GET /api/corridors and /api/corridors/:slug"]
         PA4["GET /api/reputation and /api/reputation/:slug"]
     end
 
@@ -126,9 +126,9 @@ export function transferCapable(anchor: Anchor): boolean {
 
 ### 2. Live Rate Aggregation (SEP-38)
 
-The rate engine stores individual observations from explicitly reviewed SEP-38 indicative-price candidates. It does not call firm-quote endpoints and does not execute transfers.
+The rate engine stores individual observations from explicitly reviewed SEP-38 indicative-price candidates. It does not call firm-quote endpoints and does not execute transfers. See [docs/rate-provenance.md](docs/rate-provenance.md) for capture-time provenance and source fingerprinting details.
 
-**Current production state:** the reviewed source list contains one Zeam USDC → BRL candidate. This is an observation about the current reviewed configuration, not a requirement of the architecture.
+**Current production state:** the reviewed source list contains one Zeam USDC → BRL candidate. This is an observation about the current reviewed configuration, not a requirement of the architecture. For verification context on adding a second source, see [docs/verification-second-sep38-usdc-brl.md](docs/verification-second-sep38-usdc-brl.md).
 
 For each reviewed candidate, StellarCore first validates the pair through the
 anchor's SEP-38 `/prices` endpoint, then reads an indicative price from
@@ -158,7 +158,8 @@ Sorted median:   1612
 
 StellarCore's first reputation engine uses only evidence already persisted by
 StellarCore. It is not an external endorsement or a claim about an anchor's
-legal, custodial, or financial trustworthiness.
+legal, custodial, or financial trustworthiness. Detailed scoring components,
+constants, and threshold definitions are documented in [docs/reputation-methodology.md](docs/reputation-methodology.md).
 
 | Component | Weight | Definition |
 |---|---:|---|
@@ -189,17 +190,17 @@ calculation upserts the current row and advances `computedAt`; it does not appen
 historical scores. The engine is run by the authenticated scheduled-refresh
 boundary and remains independent of the public, read-only reputation API.
 
-`TransferOutcome` is implemented data modeling, not a production evidence feed. StellarCore has no trusted production outcome-ingestion source today and does not infer outcomes from Horizon or a successful on-chain payment. SEP-6 and SEP-24 history is customer-scoped where authentication applies; SEP-31 lifecycle access is scoped to authorized participants and partner anchors. Until a legitimate, authorized source with provenance exists, sparse reputation is the intended result and established scores are not supported by sufficient evidence.
+`TransferOutcome` is implemented data modeling, not a production evidence feed. StellarCore has no trusted production outcome-ingestion source today and does not infer outcomes from Horizon or a successful on-chain payment. SEP-6 and SEP-24 history is customer-scoped where authentication applies; SEP-31 lifecycle access is scoped to authorized participants and partner anchors. Until a legitimate, authorized source with provenance exists, sparse reputation is the intended result and established scores are not supported by sufficient evidence. Proposed ingestion mechanisms are detailed in the [Outcome Ingestion Architecture RFC](docs/rfc-outcome-ingestion-architecture.md) and [Outcome Webhook Schema RFC](docs/rfc-outcome-webhook-schema.md).
 
 **Planned/Future:** a transfer-outcome ingestion boundary may be considered only after a trusted source, authorization model, privacy review, and durable provenance design are available. It will not be a promised public write API.
 
 ### 4. The Public API
 
-StellarCore exposes persisted anchors, corridors, rates, and reputation through public read-only JSON endpoints. These endpoints do not synchronize anchors, request customer authorization, create transfers, or write outcome evidence.
+StellarCore exposes persisted anchors, corridors, rates, and reputation through public read-only JSON endpoints. These endpoints do not synchronize anchors, request customer authorization, create transfers, or write outcome evidence. See [docs/api-reference.md](docs/api-reference.md) for complete endpoint schemas and parameter contracts.
 
 ### 5. The Dashboard
 
-The server-rendered `/dashboard` consumes the same bounded read models as the public API. It shows persisted observations, freshness, null medians where evidence is insufficient, and null reputation scores where outcome evidence is sparse.
+The server-rendered `/dashboard` consumes the same bounded read models as the public API. It shows persisted observations, freshness, null medians where evidence is insufficient, and null reputation scores where outcome evidence is sparse. See [docs/dashboard-guide.md](docs/dashboard-guide.md) for navigation and interpretation guidance, and [docs/privacy-custody-boundaries.md](docs/privacy-custody-boundaries.md) for public custodial boundaries.
 
 ---
 
@@ -266,6 +267,8 @@ The source of truth is [prisma/schema.prisma](prisma/schema.prisma). It models
 anchors, corridors, reviewed anchor–corridor associations, individual rate
 snapshots, transfer-outcome evidence, and one current reputation score per
 anchor. Freshness is calculated at read time; it is not stored on a snapshot.
+Database constraint protections and validation rules are documented in
+[docs/evidence-data-invariants.md](docs/evidence-data-invariants.md).
 
 `TransferOutcome` supports the scoring model but has no production writer. Its
 presence in the schema must not be read as a claim that StellarCore collects
@@ -417,6 +420,8 @@ npm run registry:print
 
 ### Running Tests
 
+See [docs/testing-guide.md](docs/testing-guide.md) for test suite organization, environment isolation, and runner conventions.
+
 ```bash
 # Unit and integration tests
 npm test
@@ -429,6 +434,9 @@ npm run audit:compatibility
 
 # Read-only persisted evidence integrity audit
 npm run audit:integrity
+
+# Inventory reviewed Prisma raw-SQL boundaries
+npm run audit:sql
 
 # Update canonical API contract fixtures (intentional reviewed changes only)
 npm run contract:update
@@ -728,6 +736,15 @@ Errors use stable codes:
 | 404 | `corridor_not_found` | No persisted corridor matches the slug. |
 | 500 | `internal_error` | The persisted-rate read failed safely. |
 
+### `GET /api/rates/history?corridor=<slug>&days=<1..365>`
+
+Returns persisted rate observation history for the requested corridor over the
+selected time window (default: 30 days, 1–365 supported). The endpoint performs
+no live network or quote requests and preserves exact decimal rates, anchor
+identities, and median states (null median when insufficient fresh sources).
+Detailed response contracts and examples are documented in
+[docs/api-reference.md](docs/api-reference.md#get-apirateshistorycorridorslugdays1365).
+
 ### `GET /api/reputation`
 
 Returns every persisted anchor in slug order with its latest persisted
@@ -863,6 +880,31 @@ A persisted corridor with no associated anchors remains a successful response
 with `anchorCount: 0` and `anchors: []`. The endpoint is GET-only, dynamic,
 uses `Cache-Control: no-store`, and performs no rate, reputation, transfer,
 authentication, or live Stellar reads.
+
+---
+
+## Documentation Index
+
+For in-depth guides, operational runbooks, and architectural specifications, consult the [docs/](docs/) hub and its [index](docs/README.md):
+
+| Category | Reference Document | Description |
+|---|---|---|
+| **Overview & Navigation** | [docs/README.md](docs/README.md) | Central documentation directory and reading order |
+| **User & UI Guides** | [docs/dashboard-guide.md](docs/dashboard-guide.md) | Guide to navigating the 4 public evidence sections |
+| | [docs/dashboard-recovery-guide.md](docs/dashboard-recovery-guide.md) | Diagnosing failed dashboard requests and degraded states |
+| **API & Contracts** | [docs/api-reference.md](docs/api-reference.md) | Authoritative public HTTP routes, parameters, and error contracts |
+| | [docs/api-compatibility.md](docs/api-compatibility.md) | API versioning, compatibility gates, and fixture manifests |
+| **Architecture & Evidence** | [docs/architecture.md](docs/architecture.md) | System overview, component boundaries, and pipeline sequence |
+| | [docs/rate-provenance.md](docs/rate-provenance.md) | Capture-time rate snapshot provenance and config fingerprinting |
+| | [docs/reputation-methodology.md](docs/reputation-methodology.md) | Scoring components, 90-day window, fixed weights, and thresholds |
+| | [docs/evidence-data-invariants.md](docs/evidence-data-invariants.md) | PostgreSQL check constraints and pre-deployment invariants |
+| | [docs/evidence-provenance-walkthrough.md](docs/evidence-provenance-walkthrough.md) | End-to-end evidence lifecycle from discovery to query |
+| **Testing & Development** | [docs/testing-guide.md](docs/testing-guide.md) | Test suite runner conventions, coverage matrix, and offline rules |
+| | [docs/troubleshooting.md](docs/troubleshooting.md) | Common setup hurdles, dependencies, and verified workarounds |
+| | [docs/benchmarks/latest-observations.md](docs/benchmarks/latest-observations.md) | Query benchmark harness and performance methodology |
+| **Operations & Security** | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Staged Vercel and PostgreSQL deployment runbook |
+| | [docs/privacy-custody-boundaries.md](docs/privacy-custody-boundaries.md) | Read-only principles, secrets isolation, and wallet boundaries |
+| | [docs/database-tls-policy.md](docs/database-tls-policy.md) | Transport security requirements for PostgreSQL connections |
 
 ---
 

@@ -4,16 +4,25 @@ import {
   getReputationApiResult,
   type ReputationApiDependencies,
 } from "@/lib/api/reputation";
+import type { ReactNode } from "react";
 import type {
+  PublicReputation,
   PublicReputationScoreBand,
   PublicReputationState,
   ReputationApiListResult,
 } from "@/types/api/reputation";
 import { Badge } from "@/components/dashboard/Badge";
+import { ReputationMetricsList } from "@/components/reputation/ReputationMetricsList";
+import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
 import {
   SectionEmpty,
   SectionError,
 } from "@/components/dashboard/SectionStates";
+import {
+  StaleEvidenceNotice,
+  readDegradedMetadata,
+} from "@/components/dashboard/StaleEvidenceNotice";
+import type { StaleEvidenceMetadata } from "@/types/api/staleEvidence";
 
 function stateCopy(state: PublicReputationState): string {
   switch (state) {
@@ -41,14 +50,6 @@ function bandTone(band: PublicReputationScoreBand) {
   }
 }
 
-function formatMetric(value: number | null): string {
-  return value === null ? "—" : String(value);
-}
-
-function formatMs(value: number | null): string {
-  return value === null ? "—" : `${value} ms`;
-}
-
 export async function ReputationSection({
   dependencies,
 }: {
@@ -69,10 +70,52 @@ export function ReputationSectionView({
 
   const { reputation, count } = result.body;
 
+  // A degraded 200 carries retained last-known-good evaluations. They stay
+  // visible, but are never presented as a new reputation evaluation.
+  const degraded = readDegradedMetadata(result);
+
   if (count === 0) {
-    return <SectionEmpty message="No anchors are currently persisted." />;
+    const empty = <SectionEmpty message="No anchors are currently persisted." />;
+    return degraded ? (
+      <RetainedReputation degraded={degraded}>{empty}</RetainedReputation>
+    ) : (
+      empty
+    );
   }
 
+  const cards = (
+    <ReputationCards reputation={reputation} retained={degraded !== null} />
+  );
+
+  return degraded ? (
+    <RetainedReputation degraded={degraded}>{cards}</RetainedReputation>
+  ) : (
+    cards
+  );
+}
+
+function RetainedReputation({
+  degraded,
+  children,
+}: Readonly<{ degraded: StaleEvidenceMetadata; children: ReactNode }>) {
+  return (
+    <div data-evidence-freshness="stale" className="space-y-4">
+      <StaleEvidenceNotice
+        metadata={degraded}
+        subject="reputation evaluations"
+      />
+      {children}
+    </div>
+  );
+}
+
+function ReputationCards({
+  reputation,
+  retained,
+}: Readonly<{
+  reputation: readonly PublicReputation[];
+  retained: boolean;
+}>) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {reputation.map((entry) => (
@@ -96,8 +139,12 @@ export function ReputationSectionView({
             </h3>
 
             <Badge
-              tone={stateTone(entry.state)}
-              label={stateCopy(entry.state)}
+              tone={retained ? "warning" : stateTone(entry.state)}
+              label={
+                retained
+                  ? `Retained: ${stateCopy(entry.state)}`
+                  : stateCopy(entry.state)
+              }
             />
           </div>
 
@@ -111,6 +158,12 @@ export function ReputationSectionView({
               </span>
 
               <span className="text-xs text-[var(--muted)]">/100</span>
+
+              {retained ? (
+                <span className="text-xs text-[var(--muted)]">
+                  retained score
+                </span>
+              ) : null}
 
               {entry.scoreBand ? (
                 <Badge
@@ -137,55 +190,20 @@ export function ReputationSectionView({
           ) : null}
 
           {entry.metrics ? (
-            <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[var(--ghost)] pt-3 text-xs text-[var(--muted)]">
-              <div>
-                <dt>Fill rate 7d</dt>
-                <dd className="text-[var(--white)]">
-                  {formatMetric(entry.metrics.fillRate7d)}
-                </dd>
-              </div>
-
-              <div>
-                <dt>Fill rate 30d</dt>
-                <dd className="text-[var(--white)]">
-                  {formatMetric(entry.metrics.fillRate30d)}
-                </dd>
-              </div>
-
-              <div>
-                <dt>Fill rate 90d</dt>
-                <dd className="text-[var(--white)]">
-                  {formatMetric(entry.metrics.fillRate90d)}
-                </dd>
-              </div>
-
-              <div>
-                <dt>Settlement p50</dt>
-                <dd className="text-[var(--white)]">
-                  {formatMs(entry.metrics.settleP50Ms)}
-                </dd>
-              </div>
-
-              <div>
-                <dt>Settlement p95</dt>
-                <dd className="text-[var(--white)]">
-                  {formatMs(entry.metrics.settleP95Ms)}
-                </dd>
-              </div>
-
-              <div>
-                <dt>Slippage p50</dt>
-                <dd className="text-[var(--white)]">
-                  {formatMetric(entry.metrics.slippageP50)}
-                </dd>
-              </div>
-            </dl>
+            <ReputationMetricsList metrics={entry.metrics} />
           ) : null}
 
           {entry.computedAt ? (
-            <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--muted)]">
-              Computed {new Date(entry.computedAt).toLocaleString()}
-            </p>
+            retained ? (
+              <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                Originally computed <EvidenceTimestamp value={entry.computedAt} />{" "}
+                — retained snapshot, not a new evaluation
+              </p>
+            ) : (
+              <p className="mt-3 text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                Computed {new Date(entry.computedAt).toLocaleString()}
+              </p>
+            )
           ) : null}
         </article>
       ))}

@@ -1,4 +1,5 @@
 
+import Link from "next/link";
 import { getAnchorsApiResult, type AnchorsApiDependencies } from "@/lib/api/anchors";
 import { advertisedCapabilities } from "@/lib/stellar/advertisedCapabilities";
 import { SEPS } from "@/constants/seps";
@@ -61,7 +62,13 @@ export function AnchorsSectionView({
                   className="text-lg text-[var(--white)]"
                   style={{ fontFamily: "var(--display)" }}
                 >
-                  {anchor.name}
+                  <Link
+                    href={`/anchors/${anchor.slug}`}
+                    className="underline underline-offset-4 hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]"
+                    passHref={false}
+                  >
+                    {anchor.name}
+                  </Link>
                 </h3>
                 <p className="mt-1 text-xs text-[var(--muted)]">
                   {anchor.homeDomain}
