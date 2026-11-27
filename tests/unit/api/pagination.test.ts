@@ -62,12 +62,40 @@ test("malformed, zero, negative, and oversized values are rejected before reposi
     { limit: null, offset: " " },
     { limit: ["10", "20"], offset: null },
     { limit: null, offset: ["0", "5"] },
+    { limit: null, offset: "9007199254740992" },
+    { limit: null, offset: "9007199254740993" },
+    { limit: null, offset: "999999999999999999999999999999999999999999999" },
+    { limit: null, offset: "1e20" },
+    { limit: null, offset: "Infinity" },
+    { limit: null, offset: "NaN" },
   ] as const;
 
   for (const query of invalid) {
     const result = parsePagination(query);
     assert.equal(result.ok, false, JSON.stringify(query));
   }
+});
+
+test("safe integer boundary 9007199254740991 is accepted as valid offset", () => {
+  const result = parsePagination({ limit: null, offset: "9007199254740991" });
+  assert.deepEqual(result, {
+    ok: true,
+    pagination: { limit: null, offset: 9007199254740991 },
+  });
+});
+
+test("offsets outside safe integer range (9007199254740992 and 9007199254740993) are rejected", () => {
+  const result1 = parsePagination({ limit: null, offset: "9007199254740992" });
+  assert.deepEqual(result1, {
+    ok: false,
+    message: "offset must be a non-negative integer.",
+  });
+
+  const result2 = parsePagination({ limit: null, offset: "9007199254740993" });
+  assert.deepEqual(result2, {
+    ok: false,
+    message: "offset must be a non-negative integer.",
+  });
 });
 
 test("duplicate query parameters are captured as arrays and fail pagination parsing", () => {

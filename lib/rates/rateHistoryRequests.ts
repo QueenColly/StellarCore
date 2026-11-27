@@ -5,8 +5,74 @@ export const RATE_HISTORY_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_ERROR_MESSAGE = "Unable to load rate history.";
 const TIMEOUT_ERROR_MESSAGE = "Rate history request timed out.";
 const MISMATCH_ERROR_MESSAGE = "Rate history response did not match the requested window.";
+const MALFORMED_ERROR_MESSAGE = DEFAULT_ERROR_MESSAGE;
+
+/** Windows offered by the chart; a 200 echoing any other value is not usable. */
+const SUPPORTED_WINDOW_DAYS: ReadonlySet<number> = new Set([7, 30, 90]);
 
 type FetchLike = (input: string, init: { signal: AbortSignal }) => Promise<Response>;
+type UnknownRecord = Readonly<Record<string, unknown>>;
+type RateHistoryValidation = "valid" | "mismatch" | "malformed";
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isHistoryObservation(value: unknown): boolean {
+  // Only the fields the chart reads from an observation are checked here.
+  return (
+    isRecord(value) &&
+    isRecord(value.anchor) &&
+    typeof value.anchor.name === "string" &&
+    typeof value.rate === "string"
+  );
+}
+
+function isHistoryPoint(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.timestamp === "string" &&
+    value.timestamp.length > 0 &&
+    (value.medianRate === null || typeof value.medianRate === "string") &&
+    (value.state === "healthy" || value.state === "insufficient_fresh_sources") &&
+    typeof value.sourceCount === "number" &&
+    Number.isInteger(value.sourceCount) &&
+    value.sourceCount >= 0 &&
+    typeof value.freshSourceCount === "number" &&
+    Number.isInteger(value.freshSourceCount) &&
+    value.freshSourceCount >= 0 &&
+    Array.isArray(value.observations) &&
+    value.observations.every(isHistoryObservation)
+  );
+}
+
+/**
+ * Validates only the response fields consumed by the chart. A genuine empty
+ * points array, a null median, and zero observations are all valid evidence.
+ */
+function validateRateHistoryResponse(
+  value: unknown,
+  corridorSlug: string,
+  days: number,
+): RateHistoryValidation {
+  if (!isRecord(value) || !isRecord(value.corridor)) return "mismatch";
+  if (
+    value.corridor.slug !== corridorSlug ||
+    value.windowDays !== days ||
+    !Array.isArray(value.points)
+  ) {
+    return "mismatch";
+  }
+  if (
+    !SUPPORTED_WINDOW_DAYS.has(days) ||
+    typeof value.evaluatedAt !== "string" ||
+    value.evaluatedAt.length === 0 ||
+    !value.points.every(isHistoryPoint)
+  ) {
+    return "malformed";
+  }
+  return "valid";
+}
 
 export type RateHistoryLoaderCallbacks = Readonly<{
   onSuccess: (history: PublicRateHistoryResponse, days: number) => void;
@@ -73,12 +139,22 @@ export function createRateHistoryLoader(options: RateHistoryLoaderOptions): Rate
         const errorData = await response.json().catch(() => null);
         throw new Error(errorData?.error?.message ?? DEFAULT_ERROR_MESSAGE);
       }
-      const data = (await response.json()) as PublicRateHistoryResponse;
+      let data: unknown;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(MALFORMED_ERROR_MESSAGE);
+      }
       if (!isCurrent()) return;
-      if (data?.corridor?.slug !== corridorSlug || data.windowDays !== days || !Array.isArray(data.points)) {
+
+      const validation = validateRateHistoryResponse(data, corridorSlug, days);
+      if (validation === "mismatch") {
         throw new Error(MISMATCH_ERROR_MESSAGE);
       }
-      callbacks.onSuccess(data, days);
+      if (validation === "malformed") {
+        throw new Error(MALFORMED_ERROR_MESSAGE);
+      }
+      callbacks.onSuccess(data as PublicRateHistoryResponse, days);
     } catch (err) {
       if (!isCurrent()) return;
       if (timedOut) {

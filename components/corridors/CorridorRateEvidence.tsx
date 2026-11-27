@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { EvidenceTimestamp } from "@/components/ui/EvidenceTimestamp";
 import type { PublicRatesResponse } from "@/types/api/rates";
 
 type Props = Readonly<{ rates: PublicRatesResponse }>;
@@ -40,7 +42,9 @@ export function CorridorRateEvidence({ rates }: Props) {
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-[var(--muted)]">Evaluated</dt>
-            <dd className="mt-1 text-[var(--muted)]">{new Date(rates.evaluatedAt).toLocaleString()}</dd>
+            <dd className="mt-1 text-[var(--muted)]">
+              <EvidenceTimestamp value={rates.evaluatedAt} />
+            </dd>
           </div>
         </dl>
 
@@ -79,21 +83,35 @@ export function CorridorRateEvidence({ rates }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {rates.observations.map((observation) => (
-                  <tr key={observation.anchor.slug} className="border-t border-[var(--ghost)] align-top">
-                    <td className="px-3 py-3 text-[var(--white)]">{observation.anchor.name}</td>
-                    <td className="px-3 py-3 text-[var(--white)] break-all">{observation.rate}</td>
-                    <td className="px-3 py-3 text-[var(--muted)]">
-                      {new Date(observation.capturedAt).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-[var(--muted)]">{observation.freshness.state}</td>
-                    <td className="px-3 py-3 text-[var(--muted)]">
-                      {observation.eligibleForMedian
-                        ? "Included"
-                        : `Excluded${observation.exclusionReason ? ` — ${observation.exclusionReason.replace(/_/g, " ")}` : ""}`}
-                    </td>
-                  </tr>
-                ))}
+                {rates.observations.map((observation) => {
+                  const slug = observation.anchor.slug?.trim() ?? "";
+                  const label = observation.anchor.name?.trim() || slug || "Unavailable";
+                  return (
+                    <tr key={observation.anchor.slug} className="border-t border-[var(--ghost)] align-top">
+                      <td className="px-3 py-3 text-[var(--white)]">
+                        {slug ? (
+                          <Link
+                            href={`/anchors/${encodeURIComponent(slug)}`}
+                            className="underline underline-offset-4 hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]"
+                          >
+                            {label}
+                            <span className="sr-only"> — view anchor evidence details</span>
+                          </Link>
+                        ) : label}
+                      </td>
+                      <td className="px-3 py-3 text-[var(--white)] break-all">{observation.rate}</td>
+                      <td className="px-3 py-3 text-[var(--muted)]">
+                        <EvidenceTimestamp value={observation.capturedAt} />
+                      </td>
+                      <td className="px-3 py-3 text-[var(--muted)]">{observation.freshness.state}</td>
+                      <td className="px-3 py-3 text-[var(--muted)]">
+                        {observation.eligibleForMedian
+                          ? "Included"
+                          : `Excluded${observation.exclusionReason ? ` — ${observation.exclusionReason.replace(/_/g, " ")}` : ""}`}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             </div>
