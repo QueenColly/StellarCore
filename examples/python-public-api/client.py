@@ -68,7 +68,9 @@ class StellarCoreClient:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 status = response.status
-                headers = dict(response.headers)
+                headers = {key.lower(): value for key, value in response.headers.items()}
+                if status != 200:
+                    raise StellarCoreApiError(status, "unexpected_status", "Expected HTTP 200.")
                 raw_bytes = response.read()
                 raw_text = raw_bytes.decode("utf-8", errors="replace")
 
@@ -164,7 +166,9 @@ class StellarCoreClient:
         Reads historical rate observations:
         GET /api/rates/history?corridor={corridor_slug}&days={days}.
         """
-        data, _ = self._get("/api/rates/history", {"corridor": corridor_slug, "days": days})
+        data, headers = self._get("/api/rates/history", {"corridor": corridor_slug, "days": days})
+        if headers.get("x-evidence-state"):
+            data["_evidence_state_header"] = headers["x-evidence-state"]
         return data
 
     def get_anchor_reputation(self, anchor_slug: str) -> Dict[str, Any]:
@@ -175,7 +179,9 @@ class StellarCoreClient:
         Crucial: score may be null if evidence is insufficient or unavailable.
         """
         safe_slug = urllib.parse.quote(anchor_slug, safe="")
-        data, _ = self._get(f"/api/reputation/{safe_slug}")
+        data, headers = self._get(f"/api/reputation/{safe_slug}")
+        if headers.get("x-evidence-state"):
+            data["_evidence_state_header"] = headers["x-evidence-state"]
         return data
 
 

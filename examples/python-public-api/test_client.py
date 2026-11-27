@@ -108,44 +108,94 @@ class TestStellarCoreClient(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_get_corridor_rate_with_published_median(self, mock_urlopen):
         fixture = {
-            "corridorSlug": "usdc-ngn",
-            "evaluatedAt": "2026-11-24T12:00:00Z",
+            "corridor": {
+                "slug": "usdc-us-brl-br",
+                "sourceAsset": "USDC",
+                "sourceCountry": "US",
+                "destinationAsset": "BRL",
+                "destinationCountry": "BR"
+            },
+            "evaluatedAt": "2026-08-28T12:00:00.000Z",
             "state": "healthy",
-            "medianRate": "1520.50",
-            "sourceCount": 3,
-            "freshSourceCount": 3,
-            "minimumFreshIndependentSources": 2,
+            "medianRate": "5.250000000000000000",
+            "sourceCount": 2,
+            "freshSourceCount": 2,
+            "reviewedCandidateConfiguration": {
+                "candidateCount": 1,
+                "uniqueAnchorCount": 1
+            },
+            "medianRequirement": {
+                "minimumFreshIndependentSources": 2
+            },
             "observations": [
                 {
-                    "anchorSlug": "cowrie",
-                    "anchorName": "Cowrie",
-                    "capturedAt": "2026-11-24T11:59:00Z",
-                    "freshnessState": "fresh",
-                    "eligibleForMedian": True,
-                    "exclusionReason": None,
+                    "anchor": {
+                        "slug": "cowrie",
+                        "name": "Cowrie"
+                    },
+                    "rate": "5.240000000000000000",
+                    "sourceAmount": "100.000000000000000000",
+                    "destinationAmount": "524.000000000000000000",
+                    "fee": "1.000000000000000000",
+                    "capturedAt": "2026-08-28T11:59:50.000Z",
+                    "freshness": {
+                        "state": "fresh",
+                        "ageMs": 10000
+                    },
+                    "eligibleForMedian": True
+                },
+                {
+                    "anchor": {
+                        "slug": "zeam",
+                        "name": "Zeam"
+                    },
+                    "rate": "5.260000000000000000",
+                    "sourceAmount": "100.000000000000000000",
+                    "destinationAmount": "526.000000000000000000",
+                    "fee": "1.500000000000000000",
+                    "capturedAt": "2026-08-28T11:59:45.000Z",
+                    "freshness": {
+                        "state": "fresh",
+                        "ageMs": 15000
+                    },
+                    "eligibleForMedian": True
                 }
-            ],
+            ]
         }
         mock_urlopen.return_value = make_mock_response(
-            200, fixture, headers={"Content-Type": "application/json", "x-evidence-state": "fresh"}
+            200, fixture, headers={"Content-Type": "application/json", "X-Evidence-State": "stale"}
         )
 
         result = self.client.get_corridor_rate("usdc-ngn")
-        self.assertEqual(result["medianRate"], "1520.50")
+        self.assertEqual(result["medianRate"], "5.250000000000000000")
         self.assertEqual(result["state"], "healthy")
-        self.assertEqual(result.get("_evidence_state_header"), "fresh")
+        self.assertEqual(result.get("_evidence_state_header"), "stale")
+        self.assertEqual(result["medianRequirement"]["minimumFreshIndependentSources"], 2)
+        self.assertEqual(result["observations"][0]["anchor"]["name"], "Cowrie")
 
     @patch("urllib.request.urlopen")
     def test_get_corridor_rate_with_null_median_insufficient_sources(self, mock_urlopen):
         fixture = {
-            "corridorSlug": "usdc-ngn",
-            "evaluatedAt": "2026-11-24T12:00:00Z",
+            "corridor": {
+                "slug": "usdc-us-brl-br",
+                "sourceAsset": "USDC",
+                "sourceCountry": "US",
+                "destinationAsset": "BRL",
+                "destinationCountry": "BR"
+            },
+            "evaluatedAt": "2026-08-28T12:00:00.000Z",
             "state": "insufficient_fresh_sources",
             "medianRate": None,
-            "sourceCount": 1,
-            "freshSourceCount": 1,
-            "minimumFreshIndependentSources": 2,
-            "observations": [],
+            "sourceCount": 0,
+            "freshSourceCount": 0,
+            "reviewedCandidateConfiguration": {
+                "candidateCount": 1,
+                "uniqueAnchorCount": 1
+            },
+            "medianRequirement": {
+                "minimumFreshIndependentSources": 2
+            },
+            "observations": []
         }
         mock_urlopen.return_value = make_mock_response(200, fixture)
 
@@ -157,18 +207,62 @@ class TestStellarCoreClient(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_get_rate_history_success(self, mock_urlopen):
         fixture = {
-            "corridorSlug": "usdc-ngn",
-            "history": [
-                {"timestamp": "2026-11-24T00:00:00Z", "medianRate": "1518.20", "sourceCount": 2},
-                {"timestamp": "2026-11-23T00:00:00Z", "medianRate": None, "sourceCount": 0},
-            ],
-            "count": 2,
+            "corridor": {
+                "slug": "usdc-us-brl-br",
+                "sourceAsset": "USDC",
+                "sourceCountry": "US",
+                "destinationAsset": "BRL",
+                "destinationCountry": "BR"
+            },
+            "evaluatedAt": "2026-08-28T12:00:00.000Z",
+            "windowDays": 7,
+            "points": [
+                {
+                    "timestamp": "2026-08-27T00:00:00Z",
+                    "medianRate": "5.250000000000000000",
+                    "state": "healthy",
+                    "sourceCount": 2,
+                    "freshSourceCount": 2,
+                    "observations": [
+                        {
+                            "anchor": {
+                                "slug": "cowrie",
+                                "name": "Cowrie"
+                            },
+                            "rate": "5.240000000000000000",
+                            "sourceAmount": "100.000000000000000000",
+                            "destinationAmount": "524.000000000000000000",
+                            "fee": "1.000000000000000000",
+                            "capturedAt": "2026-08-28T11:59:50.000Z"
+                        },
+                        {
+                            "anchor": {
+                                "slug": "zeam",
+                                "name": "Zeam"
+                            },
+                            "rate": "5.260000000000000000",
+                            "sourceAmount": "100.000000000000000000",
+                            "destinationAmount": "526.000000000000000000",
+                            "fee": "1.500000000000000000",
+                            "capturedAt": "2026-08-28T11:59:45.000Z"
+                        }
+                    ]
+                },
+                {
+                    "timestamp": "2026-08-28T00:00:00Z",
+                    "medianRate": None,
+                    "state": "insufficient_fresh_sources",
+                    "sourceCount": 0,
+                    "freshSourceCount": 0,
+                    "observations": []
+                }
+            ]
         }
         mock_urlopen.return_value = make_mock_response(200, fixture)
 
         result = self.client.get_rate_history("usdc-ngn", days=7)
-        self.assertEqual(len(result["history"]), 2)
-        self.assertIsNone(result["history"][1]["medianRate"])
+        self.assertEqual(len(result["points"]), 2)
+        self.assertIsNone(result["points"][1]["medianRate"])
 
         called_req = mock_urlopen.call_args[0][0]
         self.assertIn("days=7", called_req.full_url)
@@ -177,20 +271,179 @@ class TestStellarCoreClient(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_get_anchor_reputation_with_null_score(self, mock_urlopen):
         fixture = {
-            "anchor": {"slug": "new-anchor", "name": "New Anchor", "homeDomain": "new.anchor"},
-            "score": None,
-            "state": "insufficient_evidence",
-            "components": {
-                "availability": {"score": None, "weight": 0.3},
-                "transferReliability": {"score": None, "weight": 0.4},
-            },
+            "reputation": {
+                "anchor": {
+                    "slug": "zeam",
+                    "name": "Zeam"
+                },
+                "state": "not_evaluated",
+                "score": None,
+                "scoreBand": None,
+                "evidence": None,
+                "metrics": None,
+                "computedAt": None
+            }
         }
         mock_urlopen.return_value = make_mock_response(200, fixture)
 
         result = self.client.get_anchor_reputation("new-anchor")
         # Crucial: score must remain None, not coerced to 0
-        self.assertIsNone(result["score"])
-        self.assertEqual(result["state"], "insufficient_evidence")
+        self.assertIsNone(result["reputation"]["score"])
+        self.assertEqual(result["reputation"]["state"], "not_evaluated")
+
+    @patch("urllib.request.urlopen")
+    def test_rate_cli_reads_contract_fields(self, mock_urlopen):
+        import contextlib
+        import read_corridor_rates
+        rate = {
+            "corridor": {
+                "slug": "usdc-us-brl-br",
+                "sourceAsset": "USDC",
+                "sourceCountry": "US",
+                "destinationAsset": "BRL",
+                "destinationCountry": "BR"
+            },
+            "evaluatedAt": "2026-08-28T12:00:00.000Z",
+            "state": "healthy",
+            "medianRate": "5.250000000000000000",
+            "sourceCount": 2,
+            "freshSourceCount": 2,
+            "reviewedCandidateConfiguration": {
+                "candidateCount": 1,
+                "uniqueAnchorCount": 1
+            },
+            "medianRequirement": {
+                "minimumFreshIndependentSources": 2
+            },
+            "observations": [
+                {
+                    "anchor": {
+                        "slug": "cowrie",
+                        "name": "Cowrie"
+                    },
+                    "rate": "5.240000000000000000",
+                    "sourceAmount": "100.000000000000000000",
+                    "destinationAmount": "524.000000000000000000",
+                    "fee": "1.000000000000000000",
+                    "capturedAt": "2026-08-28T11:59:50.000Z",
+                    "freshness": {
+                        "state": "fresh",
+                        "ageMs": 10000
+                    },
+                    "eligibleForMedian": True
+                },
+                {
+                    "anchor": {
+                        "slug": "zeam",
+                        "name": "Zeam"
+                    },
+                    "rate": "5.260000000000000000",
+                    "sourceAmount": "100.000000000000000000",
+                    "destinationAmount": "526.000000000000000000",
+                    "fee": "1.500000000000000000",
+                    "capturedAt": "2026-08-28T11:59:45.000Z",
+                    "freshness": {
+                        "state": "fresh",
+                        "ageMs": 15000
+                    },
+                    "eligibleForMedian": True
+                }
+            ]
+        }
+        history = {
+            "corridor": {
+                "slug": "usdc-us-brl-br",
+                "sourceAsset": "USDC",
+                "sourceCountry": "US",
+                "destinationAsset": "BRL",
+                "destinationCountry": "BR"
+            },
+            "evaluatedAt": "2026-08-28T12:00:00.000Z",
+            "windowDays": 7,
+            "points": [
+                {
+                    "timestamp": "2026-08-27T00:00:00Z",
+                    "medianRate": "5.250000000000000000",
+                    "state": "healthy",
+                    "sourceCount": 2,
+                    "freshSourceCount": 2,
+                    "observations": [
+                        {
+                            "anchor": {
+                                "slug": "cowrie",
+                                "name": "Cowrie"
+                            },
+                            "rate": "5.240000000000000000",
+                            "sourceAmount": "100.000000000000000000",
+                            "destinationAmount": "524.000000000000000000",
+                            "fee": "1.000000000000000000",
+                            "capturedAt": "2026-08-28T11:59:50.000Z"
+                        },
+                        {
+                            "anchor": {
+                                "slug": "zeam",
+                                "name": "Zeam"
+                            },
+                            "rate": "5.260000000000000000",
+                            "sourceAmount": "100.000000000000000000",
+                            "destinationAmount": "526.000000000000000000",
+                            "fee": "1.500000000000000000",
+                            "capturedAt": "2026-08-28T11:59:45.000Z"
+                        }
+                    ]
+                },
+                {
+                    "timestamp": "2026-08-28T00:00:00Z",
+                    "medianRate": None,
+                    "state": "insufficient_fresh_sources",
+                    "sourceCount": 0,
+                    "freshSourceCount": 0,
+                    "observations": []
+                }
+            ]
+        }
+        mock_urlopen.side_effect = [make_mock_response(200, rate), make_mock_response(200, history)]
+        output = io.StringIO()
+        with patch("sys.argv", ["read_corridor_rates.py", "usdc-us-brl-br"]), contextlib.redirect_stdout(output):
+            read_corridor_rates.main()
+        self.assertIn("Minimum Required: 2", output.getvalue())
+        self.assertIn("Cowrie", output.getvalue())
+        self.assertIn("Retrieved 2 historical rate points", output.getvalue())
+
+    @patch("urllib.request.urlopen")
+    def test_reputation_cli_reads_nested_contract(self, mock_urlopen):
+        import contextlib
+        import read_anchor_reputation
+        mock_urlopen.return_value = make_mock_response(200, {
+            "reputation": {
+                "anchor": {
+                    "slug": "zeam",
+                    "name": "Zeam"
+                },
+                "state": "established",
+                "score": 95,
+                "scoreBand": "green",
+                "evidence": {
+                    "outcomeCount": 30
+                },
+                "metrics": {
+                    "fillRate7d": 0.98,
+                    "fillRate30d": 0.95,
+                    "fillRate90d": 0.94,
+                    "settleP50Ms": 1200,
+                    "settleP95Ms": 4500,
+                    "slippageP50": 0.001,
+                    "slippageP95": 0.015
+                },
+                "computedAt": "2026-08-28T12:00:00.000Z"
+            }
+        }, {"X-Evidence-State": "stale"})
+        output = io.StringIO()
+        with patch("sys.argv", ["read_anchor_reputation.py", "zeam"]), contextlib.redirect_stdout(output):
+            read_anchor_reputation.main()
+        self.assertIn("Reputation Score: 95 / 100", output.getvalue())
+        self.assertIn("Retained stale reputation", output.getvalue())
+        self.assertIn("slippageP95", output.getvalue())
 
     @patch("urllib.request.urlopen")
     def test_http_400_validation_error(self, mock_urlopen):
