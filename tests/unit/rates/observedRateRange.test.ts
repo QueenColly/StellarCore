@@ -70,9 +70,9 @@ test("two valid distinct anchor rates produce a min, max, and absolute range", (
   assert.equal(summary.pointCount, 1);
   assert.equal(summary.qualifiedPointCount, 1);
   assert.equal(summary.excludedPointCount, 0);
-  assert.equal(summary.minRate, "0.31");
-  assert.equal(summary.maxRate, "0.325");
-  assert.equal(summary.range, "0.015");
+  assert.equal(summary.snapshots[0]?.minRate ?? null, "0.31");
+  assert.equal(summary.snapshots[0]?.maxRate ?? null, "0.325");
+  assert.equal(summary.snapshots[0]?.range ?? null, "0.015");
 });
 
 test("identical rates across distinct anchors yield a zero range", () => {
@@ -80,9 +80,9 @@ test("identical rates across distinct anchors yield a zero range", () => {
     responseWith([pointWith([observation("anchor-a", "0.31"), observation("anchor-b", "0.31")])]),
   );
   assert.equal(summary.qualifiedPointCount, 1);
-  assert.equal(summary.minRate, "0.31");
-  assert.equal(summary.maxRate, "0.31");
-  assert.equal(summary.range, "0");
+  assert.equal(summary.snapshots[0]?.minRate ?? null, "0.31");
+  assert.equal(summary.snapshots[0]?.maxRate ?? null, "0.31");
+  assert.equal(summary.snapshots[0]?.range ?? null, "0");
 });
 
 test("one anchor does not qualify", () => {
@@ -96,9 +96,9 @@ test("one anchor does not qualify", () => {
   assert.equal(summary.pointCount, 1);
   assert.equal(summary.qualifiedPointCount, 0);
   assert.equal(summary.excludedPointCount, 1);
-  assert.equal(summary.minRate, null);
-  assert.equal(summary.maxRate, null);
-  assert.equal(summary.range, null);
+  assert.equal(summary.snapshots[0]?.minRate ?? null, null);
+  assert.equal(summary.snapshots[0]?.maxRate ?? null, null);
+  assert.equal(summary.snapshots[0]?.range ?? null, null);
 });
 
 test("duplicate anchor entries do not count as distinct rates", () => {
@@ -107,7 +107,7 @@ test("duplicate anchor entries do not count as distinct rates", () => {
   );
   assert.equal(summary.qualifiedPointCount, 0);
   assert.equal(summary.excludedPointCount, 1);
-  assert.equal(summary.minRate, null);
+  assert.equal(summary.snapshots[0]?.minRate ?? null, null);
 });
 
 test("a duplicate anchor followed by a second anchor yields two rates", () => {
@@ -117,9 +117,9 @@ test("a duplicate anchor followed by a second anchor yields two rates", () => {
     ]),
   );
   assert.equal(summary.qualifiedPointCount, 1);
-  assert.equal(summary.minRate, "0.31");
-  assert.equal(summary.maxRate, "0.5");
-  assert.equal(summary.range, "0.19");
+  assert.equal(summary.snapshots[0]?.minRate ?? null, "0.31");
+  assert.equal(summary.snapshots[0]?.maxRate ?? null, "0.5");
+  assert.equal(summary.snapshots[0]?.range ?? null, "0.19");
 });
 
 test("malformed and nonpositive rates are excluded and counted separately", () => {
@@ -131,7 +131,7 @@ test("malformed and nonpositive rates are excluded and counted separately", () =
   assert.equal(summary.qualifiedPointCount, 0);
   assert.equal(summary.excludedPointCount, 1);
   assert.equal(summary.excludedRateCount, 2);
-  assert.equal(summary.minRate, null);
+  assert.equal(summary.snapshots[0]?.minRate ?? null, null);
 });
 
 test("huge decimals beyond the bounded Decimal(38,18) bound are excluded", () => {
@@ -142,7 +142,7 @@ test("huge decimals beyond the bounded Decimal(38,18) bound are excluded", () =>
   );
   assert.equal(summary.qualifiedPointCount, 0);
   assert.equal(summary.excludedRateCount, 1);
-  assert.equal(summary.minRate, null);
+  assert.equal(summary.snapshots[0]?.minRate ?? null, null);
 });
 
 test("zero and zero-valued decimal rates are nonpositive and excluded", () => {
@@ -158,24 +158,22 @@ test("null medians do not change range derivation", () => {
     responseWith([pointWith([observation("anchor-a", "0.31"), observation("anchor-b", "0.325")], null)]),
   );
   assert.equal(summary.qualifiedPointCount, 1);
-  assert.equal(summary.minRate, "0.31");
-  assert.equal(summary.maxRate, "0.325");
-  assert.equal(summary.range, "0.015");
+  assert.equal(summary.snapshots[0]?.minRate ?? null, "0.31");
+  assert.equal(summary.snapshots[0]?.maxRate ?? null, "0.325");
+  assert.equal(summary.snapshots[0]?.range ?? null, "0.015");
 });
 
-test("the window min and max span qualifying points across the history", () => {
-  const summary = summarizeObservedRateRange(
-    responseWith([
-      pointWith([observation("anchor-a", "0.31"), observation("anchor-b", "0.325")]),
-      pointWith([observation("anchor-c", "0.30"), observation("anchor-d", "0.35")]),
-    ]),
-  );
-  assert.equal(summary.pointCount, 2);
+test("extrema from different snapshots are never combined", () => {
+  const secondTimestamp = "2026-08-29T12:00:00.000Z";
+  const summary = summarizeObservedRateRange(responseWith([
+    pointWith([observation("anchor-a", "0.31"), observation("anchor-b", "0.325")]),
+    { ...pointWith([observation("anchor-c", "0.80"), observation("anchor-d", "0.85")]), timestamp: secondTimestamp },
+  ]));
   assert.equal(summary.qualifiedPointCount, 2);
-  assert.equal(summary.excludedPointCount, 0);
-  assert.equal(summary.minRate, "0.30");
-  assert.equal(summary.maxRate, "0.35");
-  assert.equal(summary.range, "0.05");
+  assert.deepEqual(summary.snapshots, [
+    { timestamp: SNAPSHOT_TIMESTAMP, minRate: "0.31", maxRate: "0.325", range: "0.015" },
+    { timestamp: secondTimestamp, minRate: "0.80", maxRate: "0.85", range: "0.05" },
+  ]);
 });
 
 test("an empty points list yields a zeroed summary", () => {
@@ -185,9 +183,7 @@ test("an empty points list yields a zeroed summary", () => {
     qualifiedPointCount: 0,
     excludedPointCount: 0,
     excludedRateCount: 0,
-    minRate: null,
-    maxRate: null,
-    range: null,
+    snapshots: [],
   });
 });
 
@@ -218,4 +214,12 @@ test("parseObservedRate keeps the original string and rejects malformed or zero 
   assert.equal(parseObservedRate("0"), null);
   assert.equal(parseObservedRate(""), null);
   assert.equal(parseObservedRate("not-a-rate"), null);
+});
+
+test("missing anchor identity cannot qualify as an independent source", () => {
+  const summary = summarizeObservedRateRange(responseWith([
+    pointWith([observation("", "0.2"), observation("anchor-a", "0.3")]),
+  ]));
+  assert.equal(summary.qualifiedPointCount, 0);
+  assert.deepEqual(summary.snapshots, []);
 });

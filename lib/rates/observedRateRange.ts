@@ -30,9 +30,14 @@ export type ObservedRateRangeSummary = Readonly<{
   qualifiedPointCount: number;
   excludedPointCount: number;
   excludedRateCount: number;
-  minRate: string | null;
-  maxRate: string | null;
-  range: string | null;
+  snapshots: readonly SnapshotRateRange[];
+}>;
+
+export type SnapshotRateRange = Readonly<{
+  timestamp: string;
+  minRate: string;
+  maxRate: string;
+  range: string;
 }>;
 
 export function parseObservedRate(value: string): ObservedRate | null {
@@ -58,7 +63,7 @@ export function summarizePointRates(
       typeof observation?.anchor?.slug === "string"
         ? observation.anchor.slug
         : "";
-    if (seen.has(slug)) continue;
+    if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || seen.has(slug)) continue;
     seen.add(slug);
 
     const rate = parseObservedRate(observation?.rate);
@@ -95,34 +100,23 @@ export function summarizeObservedRateRange(
 ): ObservedRateRangeSummary {
   const points = response?.points ?? [];
   let excludedRateCount = 0;
-  let qualifiedPointCount = 0;
-  let overallMin: ObservedRate | null = null;
-  let overallMax: ObservedRate | null = null;
-
+  const snapshots: SnapshotRateRange[] = [];
   for (const point of points) {
-    const pointSummary = summarizePointRates(point);
-    excludedRateCount += pointSummary.excludedRateCount;
-    if (!pointSummary.isQualified) continue;
-    qualifiedPointCount += 1;
-
-    if (overallMin === null || compareDecimals(pointSummary.minRate!.decimal, overallMin.decimal) < 0) {
-      overallMin = pointSummary.minRate!;
-    }
-    if (overallMax === null || compareDecimals(pointSummary.maxRate!.decimal, overallMax.decimal) > 0) {
-      overallMax = pointSummary.maxRate!;
-    }
+    const summary = summarizePointRates(point);
+    excludedRateCount += summary.excludedRateCount;
+    if (!summary.isQualified || !summary.minRate || !summary.maxRate) continue;
+    snapshots.push(Object.freeze({
+      timestamp: point.timestamp,
+      minRate: summary.minRate.original,
+      maxRate: summary.maxRate.original,
+      range: formatDecimal(absDecimalDiff(summary.maxRate.decimal, summary.minRate.decimal)),
+    }));
   }
-
   return Object.freeze({
     pointCount: points.length,
-    qualifiedPointCount,
-    excludedPointCount: points.length - qualifiedPointCount,
+    qualifiedPointCount: snapshots.length,
+    excludedPointCount: points.length - snapshots.length,
     excludedRateCount,
-    minRate: overallMin?.original ?? null,
-    maxRate: overallMax?.original ?? null,
-    range:
-      overallMin && overallMax
-        ? formatDecimal(absDecimalDiff(overallMax.decimal, overallMin.decimal))
-        : null,
+    snapshots: Object.freeze(snapshots),
   });
 }

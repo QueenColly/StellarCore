@@ -18,7 +18,7 @@ export const REFRESH_STATUS_COPY: Readonly<Record<RefreshEvidenceStatus, string>
     idle: "",
     pending: "Re-reading persisted evidence…",
     completed:
-      "Display re-read from persisted evidence. Values may be unchanged; check each panel's own timestamps.",
+      "Refresh requested. Values may be unchanged; check each panel's status and timestamps.",
     failed:
       "The display could not be re-read. Panels still show their previous results; you can try again.",
   });
