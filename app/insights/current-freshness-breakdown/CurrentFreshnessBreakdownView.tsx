@@ -276,7 +276,7 @@ export function CurrentFreshnessBreakdownView({
                   </div>
                 </dl>
                 <p className="mt-3 text-xs text-[var(--muted)]">
-                  Eligibility is taken directly from each observation's `eligibleForMedian` field and
+                  Eligibility is taken directly from each observation&apos;s `eligibleForMedian` field and
                   is not derived from freshness state. A stale or future observation may still be
                   marked eligible, and a fresh observation may be ineligible.
                 </p>

@@ -67,9 +67,9 @@ export default async function CurrentFreshnessBreakdownPage({
               Current freshness breakdown
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
-              Groups the latest persisted rate observations for one reviewed corridor by the API's
+              Groups the latest persisted rate observations for one reviewed corridor by the API&apos;s
               explicit freshness states — fresh, stale, future, and invalid. Counts derive solely
-              from the API's classifications; no status is recomputed against the browser clock and
+              from the API&apos;s classifications; no status is recomputed against the browser clock and
               no median is inferred.
             </p>
           </header>

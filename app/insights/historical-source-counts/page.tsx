@@ -78,7 +78,7 @@ export default async function HistoricalSourceCountsPage({
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
               Buckets the returned rate-history snapshots by the number of distinct anchor slugs
-              observed in each point's observations. Reported <code>sourceCount</code> mismatches
+              observed in each point&apos;s observations. Reported <code>sourceCount</code> mismatches
               are shown as data-quality warnings; no correction or uptime inference is performed.
             </p>
           </header>
