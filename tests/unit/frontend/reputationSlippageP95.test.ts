@@ -81,7 +81,7 @@ test("dashboard cards render p95 for established, null for insufficient, nothing
 
   const cards = html.split("<article").slice(1);
   const card = (name: string) => {
-    const found = cards.find((value) => value.includes(`>${name}</h3>`));
+    const found = cards.find((value) => value.includes(`>${name}</a>`));
     assert.ok(found, `card for ${name}`);
     return found;
   };
