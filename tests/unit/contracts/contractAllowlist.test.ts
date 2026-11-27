@@ -76,7 +76,7 @@ test("getAllowlistedFixture strictly protects against arbitrary or unallowlisted
   // Non-existent or path-traversal names return null
   assert.equal(getAllowlistedFixture("../contracts/api/v1/manifest.json"), null);
   assert.equal(getAllowlistedFixture("internal.cron.refresh"), null);
-  assert.equal(getAllowlistedFixture("eval(secrets)"), null);
+  assert.equal(getAllowlistedFixture("unlisted.fixture.identifier"), null);
   assert.equal(getAllowlistedFixture(""), null);
 });
 
