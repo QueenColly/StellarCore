@@ -114,5 +114,28 @@ function parseOffset(
     });
   }
 
-  return Object.freeze({ ok: true, value: Number(raw) });
+  try {
+    const bigIntValue = BigInt(raw);
+    if (bigIntValue < 0n || bigIntValue > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return Object.freeze({
+        ok: false,
+        message: "offset must be a non-negative integer.",
+      });
+    }
+  } catch {
+    return Object.freeze({
+      ok: false,
+      message: "offset must be a non-negative integer.",
+    });
+  }
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    return Object.freeze({
+      ok: false,
+      message: "offset must be a non-negative integer.",
+    });
+  }
+
+  return Object.freeze({ ok: true, value });
 }
