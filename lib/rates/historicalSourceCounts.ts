@@ -125,7 +125,7 @@ export function computeHistoricalSourceCounts(
 
 export function formatPercent(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—";
-  return `${Number(value.toFixed(1))}%`;
+  return `${value.toFixed(1)}%`;
 }
 
 export function describeBucket(label: BucketLabel): string {
@@ -142,7 +142,7 @@ export function describeBucket(label: BucketLabel): string {
 }
 
 export function describeMismatch(m: SourceCountMismatch): string {
-  return `Snapshot at ${m.timestamp} reported sourceCount ${m.reportedSourceCount} but ${m.observedDistinctAnchorCount} distinct anchor slug${m.observedDistinctAnchorCount === 1 ? "" : "s"} were observed.`;
+  return `Snapshot at ${m.timestamp} reported sourceCount ${m.reportedSourceCount} but ${m.observedDistinctAnchorCount} distinct anchor slug${m.observedDistinctAnchorCount === 1 ? " was" : "s were"} observed.`;
 }
 
 export function isNonEmptySlug(value: unknown): value is string {

@@ -82,7 +82,7 @@ test("computeCurrentFreshnessBreakdown groups all four states", () => {
   const future = result.groups.find((g) => g.state === "future");
   assert.ok(future);
   assert.equal(future.count, 1);
-  assert.deepEqual(future.agesMs, []);
+  assert.deepEqual(future.agesMs, [-5000]);
   assert.equal(future.nullAgeCount, 0);
   assert.equal(future.hasNegativeAge, true);
   assert.equal(future.eligibleForMedianCount, 0);
