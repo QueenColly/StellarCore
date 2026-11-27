@@ -13,6 +13,7 @@ import type {
   PublicReputation,
   PublicReputationScoreBand,
   PublicReputationState,
+  ReputationApiDetailResult,
 } from "@/types/api/reputation";
 
 type Props = Readonly<{ params: Promise<Readonly<{ slug: string }>> }>;
@@ -49,13 +50,10 @@ export default async function AnchorPage({ params }: Props) {
   const hasSep38 = anchor.seps.includes(SEPS.SEP_38);
 
   const reputationResult = await getAnchorReputationApiResult(slug);
-  const reputation = reputationResult.status === 200
-    ? reputationResult.body.reputation
-    : null;
 
   return (
     <>
-      <ProductHeader current="dashboard" />
+      <ProductHeader current="detail" />
       <main id="main-content" className="min-h-screen bg-[var(--black)] px-4 py-8 text-[var(--white)] sm:px-8 sm:py-10 lg:px-12">
         <div className="mx-auto max-w-6xl">
           <nav aria-label="Breadcrumb" className="text-xs text-[var(--muted)]">
@@ -159,24 +157,41 @@ export default async function AnchorPage({ params }: Props) {
             )}
           </section>
 
-          <section aria-labelledby="reputation-heading" className="mt-10">
-            <p className="eyebrow">Reputation evidence</p>
-            <h2 id="reputation-heading" className="mt-2 text-xl" style={{ fontFamily: "var(--display)" }}>
-              Evaluated outcome history
-            </h2>
-            {reputation === null ? (
-              <div className="mt-5 rounded-lg border border-[var(--ghost)] bg-[var(--surface)] p-5">
-                <p className="text-sm text-[var(--muted)]">
-                  Reputation evidence is currently unavailable for this anchor.
-                </p>
-              </div>
-            ) : (
-              <ReputationEvidence reputation={reputation} />
-            )}
-          </section>
+          <AnchorReputationSection result={reputationResult} />
         </div>
       </main>
     </>
+  );
+}
+
+function AnchorReputationSection({ result }: { result: ReputationApiDetailResult }) {
+  return (
+    <section aria-labelledby="reputation-heading" className="mt-10">
+      <p className="eyebrow">Reputation evidence</p>
+      <h2 id="reputation-heading" className="mt-2 text-xl" style={{ fontFamily: "var(--display)" }}>
+        Evaluated outcome history
+      </h2>
+      {result.status === 200 ? (
+        <ReputationEvidence reputation={result.body.reputation} />
+      ) : (
+        <ReputationReadFailure />
+      )}
+    </section>
+  );
+}
+
+function ReputationReadFailure() {
+  return (
+    <div
+      role="alert"
+      data-reputation-state="error"
+      className="mt-5 rounded-lg border border-[rgba(238,143,129,0.35)] bg-[var(--surface)] p-5"
+    >
+      <p className="text-sm text-[#ee8f81]">Unable to load reputation evidence.</p>
+      <p className="mt-2 text-xs text-[var(--muted)]">
+        Reload this page to try again. Other anchor details remain available.
+      </p>
+    </div>
   );
 }
 
