@@ -7,7 +7,8 @@ function read(relativePath: string): string {
 }
 
 const anchorPage = read("app/anchors/[slug]/page.tsx");
-const corridorPage = read("app/corridors/[slug]/page.tsx");
+// The corridor route fetches in page.tsx and renders its markup from the colocated view.
+const corridorPage = read("app/corridors/[slug]/page.tsx") + read("app/corridors/[slug]/CorridorDetailView.tsx");
 const rateEvidence = read("components/corridors/CorridorRateEvidence.tsx");
 const globalStyles = read("app/globals.css");
 
@@ -18,7 +19,7 @@ const DETAIL_PAGES: readonly Readonly<{ page: string; source: string }>[] = [
 
 test("both detail pages expose one main landmark that the shared skip link can reach", () => {
   for (const { page, source } of DETAIL_PAGES) {
-    assert.match(source, /<ProductHeader current="dashboard"/, `${page} must render the shared header`);
+    assert.match(source, /<ProductHeader current="detail"/, `${page} must render the shared header in detail context`);
     assert.match(source, /id="main-content"/, `${page} must expose the skip-link target`);
   }
 
